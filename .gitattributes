@@ -1,0 +1,19 @@
+# Store text files with LF in the repo and check them out as LF on every OS,
+# so `dart format` behaves identically on Windows and in CI (Linux).
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF to run correctly.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binary files.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.jar binary
+*.jks binary
+*.keystore binary
+*.pdf binary
