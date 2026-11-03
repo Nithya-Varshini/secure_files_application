@@ -39,6 +39,14 @@ class _RecoverPageState extends State<RecoverPage> {
       setState(() => _error = 'Enter all 12 words, separated by spaces.');
       return;
     }
+    if (!RecoveryPhrase.isValid(words)) {
+      setState(
+        () => _error =
+            "Those words don't form a valid phrase. Check the spelling and "
+            'the order.',
+      );
+      return;
+    }
     setState(() => _busy = true);
     final ok = await context.read<SessionCubit>().checkRecoveryPhrase(words);
     if (!mounted) return;

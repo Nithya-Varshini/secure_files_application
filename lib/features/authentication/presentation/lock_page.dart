@@ -8,7 +8,7 @@ import '../../../app/routes.dart';
 import '../../../core/widgets/app_logo.dart';
 import '../../../core/widgets/common.dart';
 import '../../../core/widgets/pin_pad.dart';
-import '../../settings/presentation/settings_cubit.dart';
+import '../domain/auth_repository.dart';
 import 'session_cubit.dart';
 
 class LockPage extends StatefulWidget {
@@ -27,8 +27,25 @@ class _LockPageState extends State<LockPage> {
   @override
   void initState() {
     super.initState();
-    if (context.read<SessionCubit>().state.isLockedOut(DateTime.now())) {
+    final session = context.read<SessionCubit>().state;
+    if (session.isLockedOut(DateTime.now())) {
       _startCountdown();
+    } else if (session.biometricsEnrolled) {
+      // Offer the fingerprint straight away; the PIN pad stays as fallback.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _biometric());
+    }
+  }
+
+  Future<void> _biometric() async {
+    try {
+      await context.read<SessionCubit>().unlockWithBiometric();
+    } on BiometricsInvalidatedException {
+      if (!mounted) return;
+      setState(
+        () => _message =
+            'Your fingerprints changed, so fingerprint unlock was turned off. '
+            'Use your PIN.',
+      );
     }
   }
 
@@ -80,9 +97,7 @@ class _LockPageState extends State<LockPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final session = context.watch<SessionCubit>().state;
-    final biometric = context.select(
-      (SettingsCubit c) => c.state.biometricEnabled,
-    );
+    final biometric = session.biometricsEnrolled;
     final now = DateTime.now();
     final lockedOut = session.isLockedOut(now);
     final wait = lockedOut ? session.lockedOutUntil!.difference(now) : null;
@@ -128,9 +143,7 @@ class _LockPageState extends State<LockPage> {
                   enabled: !lockedOut && !_checking,
                   errorTick: _errorTick,
                   onCompleted: _submit,
-                  onBiometric: biometric && !lockedOut
-                      ? context.read<SessionCubit>().unlockWithBiometric
-                      : null,
+                  onBiometric: biometric && !lockedOut ? _biometric : null,
                 ),
                 const SizedBox(height: 8),
                 TextButton(

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/platform/secure_window.dart';
+import '../core/security/auto_lock_guard.dart';
+import '../core/storage/vault_paths.dart';
 import '../core/theme/app_theme.dart';
 import '../features/authentication/presentation/session_cubit.dart';
 import '../features/backup_restore/presentation/backup_cubit.dart';
@@ -31,6 +34,7 @@ class _VaultAppState extends State<VaultApp> {
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onHide: _onHide, onShow: _onShow);
+    SecureWindow.setSecure(_settings.state.screenshotProtection);
   }
 
   @override
@@ -43,6 +47,8 @@ class _VaultAppState extends State<VaultApp> {
   // Auto-lock: leaving the app starts the clock; coming back after the
   // chosen delay requires the PIN again.
   void _onHide() {
+    // A system picker or the camera is open on our behalf.
+    if (AutoLockGuard.suspended) return;
     _hiddenAt = DateTime.now();
     if (_settings.state.autoLock.duration == Duration.zero) _session.lock();
   }
@@ -50,7 +56,7 @@ class _VaultAppState extends State<VaultApp> {
   void _onShow() {
     final hiddenAt = _hiddenAt;
     _hiddenAt = null;
-    if (hiddenAt == null) return;
+    if (hiddenAt == null || AutoLockGuard.suspended) return;
     final away = DateTime.now().difference(hiddenAt);
     if (away >= _settings.state.autoLock.duration) _session.lock();
   }
@@ -66,9 +72,18 @@ class _VaultAppState extends State<VaultApp> {
         BlocProvider(create: (_) => NotesCubit(getIt())),
         BlocProvider(create: (_) => BackupCubit()),
       ],
-      child: BlocListener<SessionCubit, SessionState>(
-        listenWhen: (a, b) => a.status != b.status,
-        listener: _onSessionChanged,
+      child: MultiBlocListener(
+        listeners: [
+          BlocListener<SessionCubit, SessionState>(
+            listenWhen: (a, b) => a.status != b.status,
+            listener: _onSessionChanged,
+          ),
+          BlocListener<SettingsCubit, SettingsState>(
+            listenWhen: (a, b) =>
+                a.screenshotProtection != b.screenshotProtection,
+            listener: (_, s) => SecureWindow.setSecure(s.screenshotProtection),
+          ),
+        ],
         child: BlocBuilder<SettingsCubit, SettingsState>(
           buildWhen: (a, b) => a.themeMode != b.themeMode,
           builder: (context, settings) => MaterialApp.router(
@@ -101,6 +116,8 @@ class _VaultAppState extends State<VaultApp> {
       media.clear();
       files.clear();
       notes.clear();
+      // Decrypted temp files (e.g. a video being played) go too.
+      getIt<VaultPaths>().wipeTemp();
     }
   }
 }

@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/widgets/buttons.dart';
 import '../../authentication/presentation/session_cubit.dart';
-import '../../settings/presentation/settings_cubit.dart';
 import 'vault_setup_cubit.dart';
 
 class BiometricSetupPage extends StatefulWidget {
@@ -18,6 +17,16 @@ class _BiometricSetupPageState extends State<BiometricSetupPage> {
   bool _done = false;
   bool _opening = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Devices without strong biometrics or a hardware keystore skip the
+    // offer: biometric unlock must never fall back to a software key.
+    context.read<SessionCubit>().biometricsAvailable().then((available) {
+      if (!available && mounted) setState(() => _done = true);
+    });
+  }
+
   void _choose(bool enabled) {
     context.read<VaultSetupCubit>().setBiometric(enabled);
     setState(() => _done = true);
@@ -26,12 +35,12 @@ class _BiometricSetupPageState extends State<BiometricSetupPage> {
   Future<void> _openVault() async {
     setState(() => _opening = true);
     final setup = context.read<VaultSetupCubit>().state;
-    context.read<SettingsCubit>().setBiometric(setup.biometric);
-    // The router redirects to the home screen as soon as the session
-    // reports the vault as unlocked.
+    // Deriving the PIN key takes about a second (Argon2id). The router then
+    // redirects home as soon as the session reports the vault unlocked.
     await context.read<SessionCubit>().createVault(
       pin: setup.pin!,
       phrase: setup.phrase,
+      enableBiometrics: setup.biometric,
     );
   }
 
@@ -174,7 +183,7 @@ class _ReadyView extends StatelessWidget {
         ),
         const Spacer(),
         PrimaryButton(
-          label: busy ? 'Opening…' : 'Open my vault',
+          label: busy ? 'Encrypting your vault…' : 'Open my vault',
           onPressed: busy ? null : onOpen,
         ),
       ],

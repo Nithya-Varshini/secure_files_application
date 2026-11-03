@@ -36,6 +36,7 @@ class SessionState extends Equatable {
     this.failedAttempts = 0,
     this.lockedOutUntil,
     this.recoveryVerified = false,
+    this.biometricsEnrolled = false,
     this.events = const [],
   });
 
@@ -43,6 +44,7 @@ class SessionState extends Equatable {
   final int failedAttempts;
   final DateTime? lockedOutUntil;
   final bool recoveryVerified;
+  final bool biometricsEnrolled;
   final List<SecurityEvent> events;
 
   bool isLockedOut(DateTime now) =>
@@ -54,6 +56,7 @@ class SessionState extends Equatable {
     DateTime? lockedOutUntil,
     bool clearLockout = false,
     bool? recoveryVerified,
+    bool? biometricsEnrolled,
     List<SecurityEvent>? events,
   }) {
     return SessionState(
@@ -63,6 +66,7 @@ class SessionState extends Equatable {
           ? null
           : (lockedOutUntil ?? this.lockedOutUntil),
       recoveryVerified: recoveryVerified ?? this.recoveryVerified,
+      biometricsEnrolled: biometricsEnrolled ?? this.biometricsEnrolled,
       events: events ?? this.events,
     );
   }
@@ -73,6 +77,7 @@ class SessionState extends Equatable {
     failedAttempts,
     lockedOutUntil,
     recoveryVerified,
+    biometricsEnrolled,
     events,
   ];
 }
@@ -80,13 +85,21 @@ class SessionState extends Equatable {
 /// Single source of truth for "is the vault open?". The router redirects on
 /// every change, and feature data is loaded or wiped in response.
 class SessionCubit extends Cubit<SessionState> {
-  SessionCubit(this._auth, {DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now,
-      super(
-        SessionState(
-          status: _auth.hasVault ? VaultStatus.locked : VaultStatus.noVault,
-        ),
-      );
+  SessionCubit(
+    this._auth, {
+    LockoutState lockout = const LockoutState(),
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now,
+       super(
+         SessionState(
+           status: _auth.hasVault ? VaultStatus.locked : VaultStatus.noVault,
+           failedAttempts: lockout.failedAttempts,
+           lockedOutUntil: lockout.lockedOutUntil,
+           // A vault can only be created after the phrase was verified.
+           recoveryVerified: _auth.hasVault,
+           biometricsEnrolled: _auth.biometricsEnrolled,
+         ),
+       );
 
   /// Wrong PINs allowed before the first wait.
   static const freeAttempts = 5;
@@ -99,15 +112,20 @@ class SessionCubit extends Cubit<SessionState> {
 
   int get attemptsLeft => math.max(0, freeAttempts - state.failedAttempts);
 
+  Future<bool> biometricsAvailable() => _auth.biometricsAvailable();
+
   Future<void> createVault({
     required String pin,
     required List<String> phrase,
+    bool enableBiometrics = false,
   }) async {
     await _auth.createVault(pin: pin, recoveryPhrase: phrase);
+    if (enableBiometrics) await _auth.enableBiometrics();
     emit(
       SessionState(
         status: VaultStatus.unlocked,
         recoveryVerified: true,
+        biometricsEnrolled: _auth.biometricsEnrolled,
         events: _log(SecurityEventType.vaultCreated),
       ),
     );
@@ -117,15 +135,8 @@ class SessionCubit extends Cubit<SessionState> {
     final now = _clock();
     if (state.isLockedOut(now)) return UnlockResult.lockedOut;
 
-    if (await _auth.verifyPin(pin)) {
-      emit(
-        state.copyWith(
-          status: VaultStatus.unlocked,
-          failedAttempts: 0,
-          clearLockout: true,
-          events: _log(SecurityEventType.unlocked),
-        ),
-      );
+    if (await _auth.unlockWithPin(pin)) {
+      _unlocked(SecurityEventType.unlocked);
       return UnlockResult.success;
     }
 
@@ -135,6 +146,9 @@ class SessionCubit extends Cubit<SessionState> {
       final multiplier = math.min(1 << (attempts - freeAttempts), 32);
       until = now.add(baseLockout * multiplier);
     }
+    await _auth.writeLockout(
+      LockoutState(failedAttempts: attempts, lockedOutUntil: until),
+    );
     emit(
       state.copyWith(
         failedAttempts: attempts,
@@ -149,21 +163,35 @@ class SessionCubit extends Cubit<SessionState> {
     return until == null ? UnlockResult.wrongPin : UnlockResult.lockedOut;
   }
 
-  /// PREVIEW: real biometrics unlock a Keystore key via BiometricPrompt.
-  void unlockWithBiometric() {
-    if (state.status != VaultStatus.locked) return;
+  /// Returns false if cancelled. Throws [BiometricsInvalidatedException]
+  /// when new fingerprints were enrolled; biometric unlock is then off.
+  Future<bool> unlockWithBiometric() async {
+    if (state.status != VaultStatus.locked) return false;
+    try {
+      if (!await _auth.unlockWithBiometrics()) return false;
+    } on BiometricsInvalidatedException {
+      emit(state.copyWith(biometricsEnrolled: false));
+      rethrow;
+    }
+    _unlocked(SecurityEventType.biometricUnlock);
+    return true;
+  }
+
+  void _unlocked(SecurityEventType event) {
+    _auth.writeLockout(const LockoutState());
     emit(
       state.copyWith(
         status: VaultStatus.unlocked,
         failedAttempts: 0,
         clearLockout: true,
-        events: _log(SecurityEventType.biometricUnlock),
+        events: _log(event),
       ),
     );
   }
 
   void lock() {
     if (state.status != VaultStatus.unlocked) return;
+    _auth.lock();
     emit(
       state.copyWith(
         status: VaultStatus.locked,
@@ -187,20 +215,22 @@ class SessionCubit extends Cubit<SessionState> {
     return true;
   }
 
+  Future<bool> setBiometrics(bool enabled) async {
+    if (enabled) {
+      if (!await _auth.enableBiometrics()) return false;
+    } else {
+      await _auth.disableBiometrics();
+    }
+    emit(state.copyWith(biometricsEnrolled: _auth.biometricsEnrolled));
+    return true;
+  }
+
   Future<bool> recover({
     required List<String> words,
     required String newPin,
   }) async {
-    if (!await _auth.verifyRecoveryPhrase(words)) return false;
-    await _auth.changePin(newPin);
-    emit(
-      state.copyWith(
-        status: VaultStatus.unlocked,
-        failedAttempts: 0,
-        clearLockout: true,
-        events: _log(SecurityEventType.recovered),
-      ),
-    );
+    if (!await _auth.recover(words: words, newPin: newPin)) return false;
+    _unlocked(SecurityEventType.recovered);
     return true;
   }
 

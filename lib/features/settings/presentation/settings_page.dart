@@ -30,13 +30,7 @@ class SettingsPage extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => context.push(Routes.changePin),
               ),
-              SwitchListTile(
-                secondary: const Icon(Icons.fingerprint_rounded),
-                title: const Text('Biometric unlock'),
-                subtitle: const Text('Use your fingerprint instead of the PIN'),
-                value: settings.biometricEnabled,
-                onChanged: cubit.setBiometric,
-              ),
+              const _BiometricTile(),
               ListTile(
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('Auto-lock'),
@@ -283,6 +277,60 @@ class _Group extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Enabling asks for a fingerprint, then wraps the master key with a
+/// Keystore key that only works right after a biometric check.
+class _BiometricTile extends StatefulWidget {
+  const _BiometricTile();
+
+  @override
+  State<_BiometricTile> createState() => _BiometricTileState();
+}
+
+class _BiometricTileState extends State<_BiometricTile> {
+  bool? _available;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<SessionCubit>().biometricsAvailable().then((v) {
+      if (mounted) setState(() => _available = v);
+    });
+  }
+
+  Future<void> _toggle(bool enable) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    final ok = await context.read<SessionCubit>().setBiometrics(enable);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Fingerprint unlock was not turned on')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enrolled = context.select(
+      (SessionCubit c) => c.state.biometricsEnrolled,
+    );
+    final available = _available ?? false;
+    return SwitchListTile(
+      secondary: const Icon(Icons.fingerprint_rounded),
+      title: const Text('Biometric unlock'),
+      subtitle: Text(
+        _available == false
+            ? 'Not available on this device'
+            : 'Use your fingerprint instead of the PIN',
+      ),
+      value: enrolled,
+      onChanged: available && !_busy ? _toggle : null,
     );
   }
 }
