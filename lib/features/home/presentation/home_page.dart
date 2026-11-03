@@ -11,7 +11,6 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../../../core/widgets/protection_ring.dart';
 import '../../authentication/presentation/session_cubit.dart';
-import '../../backup_restore/presentation/backup_cubit.dart';
 import '../../files/presentation/files_cubit.dart';
 import '../../media_vault/presentation/media_cubit.dart';
 import '../../media_vault/presentation/vault_thumbnail.dart';
@@ -139,12 +138,11 @@ class _ProtectionCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final session = context.watch<SessionCubit>().state;
     final settings = context.watch<SettingsCubit>().state;
-    final backup = context.watch<BackupCubit>().state;
     final checks = SecurityChecklist.evaluate(
       recoveryVerified: session.recoveryVerified,
       autoLock: settings.autoLock,
       screenshotProtection: settings.screenshotProtection,
-      recentBackup: backup.isRecent(DateTime.now()),
+      recentBackup: settings.backupIsRecent(DateTime.now()),
     );
     final done = checks.where((c) => c.ok).length;
     final allGood = done == checks.length;

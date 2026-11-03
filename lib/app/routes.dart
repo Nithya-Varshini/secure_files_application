@@ -7,6 +7,7 @@ abstract final class Routes {
 
   static const lock = '/lock';
   static const recover = '/recover';
+  static const restore = '/restore';
 
   // Bottom-navigation tabs.
   static const home = '/home';

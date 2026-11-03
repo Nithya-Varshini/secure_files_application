@@ -70,7 +70,7 @@ class _VaultAppState extends State<VaultApp> {
         BlocProvider(create: (_) => MediaCubit(getIt(), getIt())),
         BlocProvider(create: (_) => FilesCubit(getIt(), getIt())),
         BlocProvider(create: (_) => NotesCubit(getIt())),
-        BlocProvider(create: (_) => BackupCubit()),
+        BlocProvider(create: (_) => BackupCubit(getIt(), getIt(), _settings)),
       ],
       child: MultiBlocListener(
         listeners: [

@@ -121,12 +121,17 @@ class _WelcomePageState extends State<WelcomePage> {
               ],
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 4),
               child: PrimaryButton(
                 label: _isLast ? 'Create my vault' : 'Next',
                 onPressed: _next,
               ),
             ),
+            TextButton(
+              onPressed: () => context.push(Routes.restore),
+              child: const Text('Restore from a backup'),
+            ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -150,65 +155,83 @@ class _SlideView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The illustration shrinks on short screens and the slide scrolls as a
+    // last resort, so text is never clipped.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: _content(
+            context,
+            (constraints.maxHeight * 0.42).clamp(120.0, 220.0),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context, double circle) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final fade = (1 - offset.abs()).clamp(0.0, 1.0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Transform.translate(
-            offset: Offset(offset * -80, 0),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Transform.translate(
+          offset: Offset(offset * -80, 0),
+          child: Container(
+            width: circle,
+            height: circle,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: scheme.primaryContainer.withValues(alpha: 0.45),
+            ),
+            alignment: Alignment.center,
             child: Container(
-              width: 220,
-              height: 220,
+              width: circle * 0.67,
+              height: circle * 0.67,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: scheme.primaryContainer.withValues(alpha: 0.45),
-              ),
-              alignment: Alignment.center,
-              child: Container(
-                width: 148,
-                height: 148,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [scheme.primary, scheme.tertiary],
-                  ),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [scheme.primary, scheme.tertiary],
                 ),
-                child: Icon(slide.icon, size: 68, color: scheme.onPrimary),
+              ),
+              child: Icon(
+                slide.icon,
+                size: circle * 0.31,
+                color: scheme.onPrimary,
               ),
             ),
           ),
-          const SizedBox(height: 48),
-          Opacity(
-            opacity: fade,
-            child: Column(
-              children: [
-                Text(
-                  slide.title,
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
+        ),
+        SizedBox(height: circle * 0.2),
+        Opacity(
+          opacity: fade,
+          child: Column(
+            children: [
+              Text(
+                slide.title,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  slide.body,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                slide.body,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  height: 1.5,
                 ),
-              ],
-            ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

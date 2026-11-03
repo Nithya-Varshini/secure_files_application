@@ -234,6 +234,15 @@ class SessionCubit extends Cubit<SessionState> {
     return true;
   }
 
+  /// Called after BackupService installed and unlocked a restored vault.
+  void restoredFromBackup() => emit(
+    SessionState(
+      status: VaultStatus.unlocked,
+      recoveryVerified: true,
+      events: _log(SecurityEventType.recovered),
+    ),
+  );
+
   Future<void> deleteVault() async {
     await _auth.deleteVault();
     emit(const SessionState());

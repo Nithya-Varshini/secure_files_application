@@ -9,6 +9,7 @@ import '../features/authentication/presentation/lock_page.dart';
 import '../features/authentication/presentation/recover_page.dart';
 import '../features/authentication/presentation/session_cubit.dart';
 import '../features/backup_restore/presentation/backup_page.dart';
+import '../features/backup_restore/presentation/restore_page.dart';
 import '../features/files/presentation/file_preview_page.dart';
 import '../features/files/presentation/files_page.dart';
 import '../features/home/presentation/home_page.dart';
@@ -69,6 +70,10 @@ GoRouter createRouter(SessionCubit session) {
       GoRoute(
         path: Routes.recover,
         builder: (context, state) => const RecoverPage(),
+      ),
+      GoRoute(
+        path: Routes.restore,
+        builder: (context, state) => const RestorePage(),
       ),
       StatefulShellRoute(
         builder: (context, state, shell) => HomeShell(shell: shell),
@@ -132,7 +137,10 @@ GoRouter createRouter(SessionCubit session) {
 @visibleForTesting
 String? guard(VaultStatus status, Uri uri) {
   final path = uri.path;
-  final onboarding = path == Routes.welcome || path.startsWith('/setup');
+  final onboarding =
+      path == Routes.welcome ||
+      path.startsWith('/setup') ||
+      path == Routes.restore;
   final authScreen = path == Routes.lock || path == Routes.recover;
 
   switch (status) {
