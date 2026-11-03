@@ -67,8 +67,8 @@ class _VaultAppState extends State<VaultApp> {
       providers: [
         BlocProvider.value(value: _session),
         BlocProvider.value(value: _settings),
-        BlocProvider(create: (_) => MediaCubit(getIt())),
-        BlocProvider(create: (_) => FilesCubit(getIt())),
+        BlocProvider(create: (_) => MediaCubit(getIt(), getIt())),
+        BlocProvider(create: (_) => FilesCubit(getIt(), getIt())),
         BlocProvider(create: (_) => NotesCubit(getIt())),
         BlocProvider(create: (_) => BackupCubit()),
       ],

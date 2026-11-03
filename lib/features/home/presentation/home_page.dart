@@ -9,13 +9,12 @@ import '../../../core/state/load_status.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
-import '../../../core/widgets/gradient_thumb.dart';
 import '../../../core/widgets/protection_ring.dart';
 import '../../authentication/presentation/session_cubit.dart';
 import '../../backup_restore/presentation/backup_cubit.dart';
 import '../../files/presentation/files_cubit.dart';
 import '../../media_vault/presentation/media_cubit.dart';
-import '../../media_vault/presentation/media_style.dart';
+import '../../media_vault/presentation/vault_thumbnail.dart';
 import '../../media_vault/presentation/media_viewer_page.dart';
 import '../../notes/presentation/notes_cubit.dart';
 import '../../security_center/domain/security_check.dart';
@@ -53,19 +52,7 @@ class HomePage extends StatelessWidget {
           ),
           const SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: InfoBanner(
-                icon: Icons.science_outlined,
-                tone: BannerTone.warning,
-                text:
-                    'Preview build: items are samples kept in memory and '
-                    'are not encrypted yet.',
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 0),
               child: _ProtectionCard(),
             ),
           ),
@@ -391,17 +378,8 @@ class _RecentStrip extends StatelessWidget {
             transitionDuration: const Duration(milliseconds: 450),
             openBuilder: (context, _) =>
                 MediaViewerPage(ids: ids, initialIndex: i),
-            closedBuilder: (context, _) => Stack(
-              fit: StackFit.expand,
-              children: [
-                GradientThumb(
-                  seed: recent[i].seed,
-                  icon: recent[i].isVideo
-                      ? Icons.play_circle_outline_rounded
-                      : recent[i].subject.icon,
-                ),
-              ],
-            ),
+            closedBuilder: (context, _) =>
+                VaultThumbnail(item: recent[i], borderRadius: 16),
           ),
         ),
       ),

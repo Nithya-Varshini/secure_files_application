@@ -2,56 +2,49 @@ import 'package:equatable/equatable.dart';
 
 enum MediaType { photo, video }
 
-/// What a sample image depicts; drives placeholder artwork only.
-enum MediaSubject {
-  landscape,
-  portrait,
-  pet,
-  food,
-  travel,
-  celebration,
-  nature,
-}
-
 class MediaItem extends Equatable {
   const MediaItem({
     required this.id,
     required this.title,
     required this.type,
-    required this.subject,
-    required this.album,
+    required this.mimeType,
     required this.createdAt,
     required this.sizeBytes,
-    required this.seed,
-    this.duration,
+    this.width,
+    this.height,
+    this.hasThumbnail = false,
     this.favorite = false,
   });
 
   final String id;
   final String title;
   final MediaType type;
-  final MediaSubject subject;
-  final String album;
+  final String mimeType;
   final DateTime createdAt;
   final int sizeBytes;
-
-  /// Seed for placeholder artwork until real thumbnails exist.
-  final int seed;
-  final Duration? duration;
+  final int? width;
+  final int? height;
+  final bool hasThumbnail;
   final bool favorite;
 
   bool get isVideo => type == MediaType.video;
+
+  /// Seed for the placeholder shown while (or instead of) a thumbnail.
+  int get seed => id.hashCode;
+
+  double get aspectRatio =>
+      width != null && height != null && height! > 0 ? width! / height! : 4 / 3;
 
   MediaItem copyWith({bool? favorite}) => MediaItem(
     id: id,
     title: title,
     type: type,
-    subject: subject,
-    album: album,
+    mimeType: mimeType,
     createdAt: createdAt,
     sizeBytes: sizeBytes,
-    seed: seed,
-    duration: duration,
+    width: width,
+    height: height,
+    hasThumbnail: hasThumbnail,
     favorite: favorite ?? this.favorite,
   );
 
@@ -60,12 +53,12 @@ class MediaItem extends Equatable {
     id,
     title,
     type,
-    subject,
-    album,
+    mimeType,
     createdAt,
     sizeBytes,
-    seed,
-    duration,
+    width,
+    height,
+    hasThumbnail,
     favorite,
   ];
 }

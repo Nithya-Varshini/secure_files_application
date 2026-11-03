@@ -58,9 +58,3 @@ Future<bool> confirmDelete(BuildContext context, {required String what}) async {
   );
   return result ?? false;
 }
-
-void showPreviewNotice(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
-}
