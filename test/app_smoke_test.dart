@@ -1,13 +1,32 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secure_files_application/app/app.dart';
 import 'package:secure_files_application/app/di.dart';
+import 'package:secure_files_application/core/crypto/vault_crypto.dart';
+import 'package:secure_files_application/core/storage/vault_paths.dart';
 import 'package:secure_files_application/features/authentication/presentation/session_cubit.dart';
 
+import 'support/fakes.dart';
+
 void main() {
+  late Directory dir;
+
   setUp(() async {
+    dir = await Directory.systemTemp.createTemp('vault_app');
     await getIt.reset();
-    configureDependencies();
+    await configureDependencies(
+      paths: VaultPaths(
+        root: Directory('${dir.path}/vault'),
+        temp: Directory('${dir.path}/tmp'),
+      ),
+      keystore: FakeKeystore(),
+      biometrics: FakeBiometrics(),
+      kdf: KdfParams.testing,
+    );
   });
+
+  tearDown(() => dir.delete(recursive: true));
 
   testWidgets('first launch shows onboarding', (tester) async {
     await tester.pumpWidget(const VaultApp());
@@ -30,9 +49,15 @@ void main() {
   });
 
   testWidgets('locking the vault shows the lock screen', (tester) async {
-    await getIt<SessionCubit>().createVault(
-      pin: '482915',
-      phrase: List.filled(12, 'word'),
+    // Real file and crypto work must run outside the fake test clock.
+    await tester.runAsync(
+      () => getIt<SessionCubit>().createVault(
+        pin: '482915',
+        phrase: const [
+          'abandon', 'abandon', 'abandon', 'abandon', 'abandon', 'abandon', //
+          'abandon', 'abandon', 'abandon', 'abandon', 'abandon', 'about',
+        ],
+      ),
     );
     await tester.pumpWidget(const VaultApp());
     await tester.pumpAndSettle();
