@@ -1,10 +1,16 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pdfx/pdfx.dart';
 
+import '../../../app/di.dart';
+import '../../../app/import_actions.dart';
+import '../../../core/storage/vault_paths.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/dialogs.dart';
-import '../../../core/widgets/mock_paper.dart';
 import '../domain/vault_file.dart';
 import 'file_kind_style.dart';
 import 'files_cubit.dart';
@@ -19,7 +25,17 @@ class FilePreviewPage extends StatefulWidget {
 }
 
 class _FilePreviewPageState extends State<FilePreviewPage> {
-  int _page = 0;
+  late final Future<Uint8List> _content = context.read<FilesCubit>().read(
+    widget.fileId,
+  );
+
+  @override
+  void dispose() {
+    // pdfx renders through files in the cache; remove them now rather
+    // than waiting for the next lock (threat model L7).
+    getIt<VaultPaths>().wipePluginLeftovers();
+    super.dispose();
+  }
 
   Future<void> _delete(VaultFile file) async {
     final cubit = context.read<FilesCubit>();
@@ -29,24 +45,12 @@ class _FilePreviewPageState extends State<FilePreviewPage> {
     await cubit.delete(file.id);
   }
 
-  Future<void> _export(VaultFile file) async {
-    if (await confirmExport(context, itemName: '"${file.name}"') && mounted) {
-      showPreviewNotice(
-        context,
-        'Preview: export arrives with the file module.',
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final file = context.select((FilesCubit c) => c.state.byId(widget.fileId));
-    if (file == null) {
-      return Scaffold(appBar: AppBar());
-    }
-    final paged = file.kind == FileKind.pdf || file.kind == FileKind.document;
+    if (file == null) return Scaffold(appBar: AppBar());
 
     return Scaffold(
       appBar: AppBar(
@@ -55,7 +59,7 @@ class _FilePreviewPageState extends State<FilePreviewPage> {
           IconButton(
             tooltip: 'Export',
             icon: const Icon(Icons.ios_share_rounded),
-            onPressed: () => _export(file),
+            onPressed: () => exportFile(context, file),
           ),
           IconButton(
             tooltip: 'Delete',
@@ -68,42 +72,27 @@ class _FilePreviewPageState extends State<FilePreviewPage> {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
           Container(
-            height: 380,
+            height: 440,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: scheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(24),
             ),
-            child: paged
-                ? Column(
-                    children: [
-                      Expanded(
-                        child: PageView.builder(
-                          itemCount: file.pageCount,
-                          onPageChanged: (i) => setState(() => _page = i),
-                          itemBuilder: (context, i) => Padding(
-                            padding: const EdgeInsets.fromLTRB(40, 24, 40, 8),
-                            child: Center(
-                              child: AspectRatio(
-                                aspectRatio: 0.72,
-                                child: MockPaper(
-                                  seed: file.id.hashCode + i,
-                                  tone: PaperTone.enhanced,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Text(
-                          'Page ${_page + 1} of ${file.pageCount}',
-                          style: theme.textTheme.labelMedium,
-                        ),
-                      ),
-                    ],
-                  )
-                : Center(child: FileKindBadge(kind: file.kind, size: 120)),
+            child: FutureBuilder<Uint8List>(
+              future: _content,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const _NoPreview(
+                    text: "This file couldn't be decrypted.",
+                  );
+                }
+                final bytes = snapshot.data;
+                if (bytes == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return _Preview(file: file, bytes: bytes);
+              },
+            ),
           ),
           const SizedBox(height: 24),
           Text(
@@ -131,15 +120,116 @@ class _FilePreviewPageState extends State<FilePreviewPage> {
                     formatDate(file.modifiedAt),
                   ),
                   const _Detail(
-                    Icons.phone_android_rounded,
+                    Icons.lock_outline_rounded,
                     'Stored',
-                    'Only on this phone',
+                    'Encrypted, only on this phone',
                   ),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _Preview extends StatelessWidget {
+  const _Preview({required this.file, required this.bytes});
+
+  final VaultFile file;
+  final Uint8List bytes;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (file.kind) {
+      case FileKind.image:
+        return InteractiveViewer(
+          maxScale: 5,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const _NoPreview(
+              text: "This image format can't be shown here.",
+            ),
+          ),
+        );
+      case FileKind.pdf:
+        return _PdfPreview(bytes: bytes);
+      case FileKind.text:
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            utf8.decode(bytes, allowMalformed: true),
+            style: const TextStyle(fontFamily: 'monospace', height: 1.4),
+          ),
+        );
+      case FileKind.document:
+      case FileKind.spreadsheet:
+      case FileKind.archive:
+      case FileKind.other:
+        return _NoPreview(
+          icon: file.kind,
+          text:
+              'No preview for this type. Export it to open it in '
+              'another app.',
+        );
+    }
+  }
+}
+
+class _PdfPreview extends StatefulWidget {
+  const _PdfPreview({required this.bytes});
+
+  final Uint8List bytes;
+
+  @override
+  State<_PdfPreview> createState() => _PdfPreviewState();
+}
+
+class _PdfPreviewState extends State<_PdfPreview> {
+  late final _controller = PdfControllerPinch(
+    document: PdfDocument.openData(widget.bytes),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PdfViewPinch(
+      controller: _controller,
+      builders: PdfViewPinchBuilders<DefaultBuilderOptions>(
+        options: const DefaultBuilderOptions(),
+        errorBuilder: (_, _) =>
+            const _NoPreview(text: "This PDF couldn't be displayed."),
+      ),
+    );
+  }
+}
+
+class _NoPreview extends StatelessWidget {
+  const _NoPreview({required this.text, this.icon});
+
+  final String text;
+  final FileKind? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FileKindBadge(kind: icon ?? FileKind.other, size: 96),
+            const SizedBox(height: 16),
+            Text(text, textAlign: TextAlign.center),
+          ],
+        ),
       ),
     );
   }

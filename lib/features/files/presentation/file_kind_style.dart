@@ -10,6 +10,7 @@ extension FileKindStyle on FileKind {
     FileKind.image => 'Image',
     FileKind.text => 'Text',
     FileKind.archive => 'Archive',
+    FileKind.other => 'File',
   };
 
   IconData get icon => switch (this) {
@@ -19,6 +20,7 @@ extension FileKindStyle on FileKind {
     FileKind.image => Icons.image_rounded,
     FileKind.text => Icons.notes_rounded,
     FileKind.archive => Icons.folder_zip_rounded,
+    FileKind.other => Icons.insert_drive_file_rounded,
   };
 
   Color get color => switch (this) {
@@ -28,6 +30,7 @@ extension FileKindStyle on FileKind {
     FileKind.image => const Color(0xFF8B5CF6),
     FileKind.text => const Color(0xFF64748B),
     FileKind.archive => const Color(0xFFD97706),
+    FileKind.other => const Color(0xFF64748B),
   };
 }
 

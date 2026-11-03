@@ -245,7 +245,7 @@ class _FolderCard extends StatelessWidget {
   }
 }
 
-enum _FileAction { rename, export, delete }
+enum _FileAction { rename, move, export, delete }
 
 class _FileTile extends StatelessWidget {
   const _FileTile({required this.file});
@@ -258,14 +258,29 @@ class _FileTile extends StatelessWidget {
       case _FileAction.rename:
         final name = await _askForName(context, file.name);
         if (name != null && name.isNotEmpty) await cubit.rename(file.id, name);
-      case _FileAction.export:
-        if (await confirmExport(context, itemName: '"${file.name}"') &&
-            context.mounted) {
-          showPreviewNotice(
-            context,
-            'Preview: export arrives with the file module.',
-          );
+      case _FileAction.move:
+        final folder = await showDialog<String>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: const Text('Move to folder'),
+            children: [
+              for (final f in VaultFolders.all)
+                ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: Text(f),
+                  trailing: f == file.folder
+                      ? const Icon(Icons.check_rounded)
+                      : null,
+                  onTap: () => Navigator.pop(context, f),
+                ),
+            ],
+          ),
+        );
+        if (folder != null && folder != file.folder) {
+          await cubit.move(file.id, folder);
         }
+      case _FileAction.export:
+        await exportFile(context, file);
       case _FileAction.delete:
         if (await confirmDelete(context, what: '"${file.name}"')) {
           await cubit.delete(file.id);
@@ -290,6 +305,7 @@ class _FileTile extends StatelessWidget {
         onSelected: (a) => _onAction(context, a),
         itemBuilder: (context) => const [
           PopupMenuItem(value: _FileAction.rename, child: Text('Rename')),
+          PopupMenuItem(value: _FileAction.move, child: Text('Move')),
           PopupMenuItem(value: _FileAction.export, child: Text('Export')),
           PopupMenuItem(value: _FileAction.delete, child: Text('Delete')),
         ],
