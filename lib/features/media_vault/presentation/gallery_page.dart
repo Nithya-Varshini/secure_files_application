@@ -4,14 +4,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../app/import_actions.dart';
 import '../../../core/state/load_status.dart';
-import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common.dart';
 import '../../../core/widgets/dialogs.dart';
-import '../../../core/widgets/gradient_thumb.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../domain/media_item.dart';
 import 'media_cubit.dart';
-import 'media_style.dart';
+import 'vault_thumbnail.dart';
 import 'media_viewer_page.dart';
 
 enum _Filter {
@@ -59,14 +57,14 @@ class _GalleryPageState extends State<GalleryPage> {
   }
 
   Future<void> _exportSelected() async {
-    final count = _selected.length;
-    if (!await confirmExport(context, itemName: '$count items')) return;
-    if (!mounted) return;
-    showPreviewNotice(
-      context,
-      'Preview: export arrives with the media module.',
-    );
-    setState(_selected.clear);
+    final items = context
+        .read<MediaCubit>()
+        .state
+        .items
+        .where((m) => _selected.contains(m.id))
+        .toList();
+    await exportMedia(context, items);
+    if (mounted) setState(_selected.clear);
   }
 
   @override
@@ -229,17 +227,9 @@ class _MediaTile extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                GradientThumb(
-                  seed: item.seed,
-                  icon: item.subject.icon,
-                  borderRadius: 10,
-                ),
+                VaultThumbnail(item: item),
                 if (item.isVideo)
-                  Positioned(
-                    right: 6,
-                    bottom: 6,
-                    child: _VideoBadge(duration: item.duration!),
-                  ),
+                  const Positioned(right: 6, bottom: 6, child: _VideoBadge()),
                 if (item.favorite)
                   const Positioned(
                     left: 6,
@@ -282,27 +272,20 @@ class _MediaTile extends StatelessWidget {
 }
 
 class _VideoBadge extends StatelessWidget {
-  const _VideoBadge({required this.duration});
-
-  final Duration duration;
+  const _VideoBadge();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: Colors.black54,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.play_arrow_rounded, size: 14, color: Colors.white),
-          Text(
-            formatDuration(duration),
-            style: const TextStyle(color: Colors.white, fontSize: 11),
-          ),
-        ],
+      child: const Icon(
+        Icons.play_arrow_rounded,
+        size: 16,
+        color: Colors.white,
       ),
     );
   }

@@ -1,13 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/dialogs.dart';
-import '../../../core/widgets/gradient_thumb.dart';
+import '../../../app/import_actions.dart';
 import '../domain/media_item.dart';
 import 'media_cubit.dart';
-import 'media_style.dart';
+import 'vault_thumbnail.dart';
 
 /// Full-screen secure viewer. Swipe between items, pinch to zoom, tap to
 /// hide the controls.
@@ -54,15 +57,7 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
     if (remaining <= 1) navigator.pop();
   }
 
-  Future<void> _export(MediaItem item) async {
-    if (!await confirmExport(context, itemName: '"${item.title}"')) return;
-    if (mounted) {
-      showPreviewNotice(
-        context,
-        'Preview: export arrives with the media module.',
-      );
-    }
-  }
+  Future<void> _export(MediaItem item) => exportMedia(context, [item]);
 
   void _showInfo(MediaItem item) {
     showModalBottomSheet<void>(
@@ -80,13 +75,12 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
-              _InfoRow('Type', item.isVideo ? 'Video' : 'Photo'),
-              _InfoRow('Album', item.album),
+              _InfoRow('Type', item.mimeType),
               _InfoRow('Added', formatDate(item.createdAt)),
               _InfoRow('Size', formatBytes(item.sizeBytes)),
-              if (item.duration != null)
-                _InfoRow('Length', formatDuration(item.duration!)),
-              const _InfoRow('Storage', 'Only on this phone'),
+              if (item.width != null)
+                _InfoRow('Dimensions', '${item.width} × ${item.height}'),
+              const _InfoRow('Storage', 'Encrypted, only on this phone'),
             ],
           ),
         ),
@@ -189,40 +183,191 @@ class _MediaPage extends StatelessWidget {
   final MediaItem item;
 
   @override
+  Widget build(BuildContext context) =>
+      item.isVideo ? _VideoPage(item: item) : _PhotoPage(item: item);
+}
+
+/// Decrypts the full photo into memory; the thumbnail shows meanwhile.
+class _PhotoPage extends StatefulWidget {
+  const _PhotoPage({required this.item});
+
+  final MediaItem item;
+
+  @override
+  State<_PhotoPage> createState() => _PhotoPageState();
+}
+
+class _PhotoPageState extends State<_PhotoPage> {
+  late final Future<Uint8List> _original = context.read<MediaCubit>().original(
+    widget.item.id,
+  );
+
+  @override
   Widget build(BuildContext context) {
-    final portrait = item.subject == MediaSubject.portrait;
-    return InteractiveViewer(
-      maxScale: 4,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: portrait ? 3 / 4 : 4 / 3,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              GradientThumb(
-                seed: item.seed,
-                icon: item.isVideo ? null : item.subject.icon,
-                borderRadius: 0,
-                iconSize: 72,
-              ),
-              if (item.isVideo)
-                Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      color: Colors.black45,
-                      shape: BoxShape.circle,
+    return FutureBuilder<Uint8List>(
+      future: _original,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const _ViewerMessage(
+            icon: Icons.broken_image_outlined,
+            text: "This photo couldn't be opened.",
+          );
+        }
+        final bytes = snapshot.data;
+        return InteractiveViewer(
+          maxScale: 5,
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: widget.item.aspectRatio,
+              child: bytes == null
+                  ? VaultThumbnail(item: widget.item, borderRadius: 0)
+                  : Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, _, _) => const _ViewerMessage(
+                        icon: Icons.broken_image_outlined,
+                        text:
+                            "This format can't be shown here. Export it "
+                            'to open it in another app.',
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      size: 44,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-            ],
+            ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// Video players need a file, so the video is decrypted into the vault's
+/// temp folder and deleted when the page closes (and on lock, at the
+/// latest).
+class _VideoPage extends StatefulWidget {
+  const _VideoPage({required this.item});
+
+  final MediaItem item;
+
+  @override
+  State<_VideoPage> createState() => _VideoPageState();
+}
+
+class _VideoPageState extends State<_VideoPage> {
+  VideoPlayerController? _controller;
+  File? _file;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  Future<void> _open() async {
+    try {
+      final file = await context.read<MediaCubit>().openVideo(widget.item.id);
+      if (!mounted) {
+        await file.delete();
+        return;
+      }
+      _file = file;
+      final controller = VideoPlayerController.file(file);
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _controller = controller);
+    } on Exception {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    _file?.delete().catchError((_) => _file!);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (_failed) {
+      return const _ViewerMessage(
+        icon: Icons.videocam_off_outlined,
+        text:
+            "This video can't be played here. Export it to open it in "
+            'another app.',
+      );
+    }
+    if (controller == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Center(
+      child: AspectRatio(
+        aspectRatio: controller.value.aspectRatio,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            VideoPlayer(controller),
+            ValueListenableBuilder<VideoPlayerValue>(
+              valueListenable: controller,
+              builder: (context, value, _) => AnimatedOpacity(
+                opacity: value.isPlaying ? 0 : 1,
+                duration: const Duration(milliseconds: 200),
+                child: IconButton.filled(
+                  iconSize: 44,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black45,
+                    foregroundColor: Colors.white,
+                  ),
+                  tooltip: value.isPlaying ? 'Pause' : 'Play',
+                  icon: Icon(
+                    value.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                  ),
+                  onPressed: () =>
+                      value.isPlaying ? controller.pause() : controller.play(),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: VideoProgressIndicator(controller, allowScrubbing: true),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ViewerMessage extends StatelessWidget {
+  const _ViewerMessage({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white70, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
         ),
       ),
     );

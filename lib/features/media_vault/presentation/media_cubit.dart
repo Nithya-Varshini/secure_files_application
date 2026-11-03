@@ -1,6 +1,10 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/platform/pickers.dart';
 import '../../../core/state/load_status.dart';
 import '../domain/media_item.dart';
 import '../domain/media_repository.dart';
@@ -20,9 +24,13 @@ class MediaState extends Equatable {
 }
 
 class MediaCubit extends Cubit<MediaState> {
-  MediaCubit(this._repository) : super(const MediaState());
+  MediaCubit(this._repository, this._picker) : super(const MediaState());
 
   final MediaRepository _repository;
+  final MediaPicker _picker;
+
+  /// Decrypted thumbnails, held in memory only and dropped on lock.
+  final _thumbnails = <String, Future<Uint8List?>>{};
 
   Future<void> load() async {
     emit(const MediaState(status: LoadStatus.loading));
@@ -31,16 +39,30 @@ class MediaCubit extends Cubit<MediaState> {
   }
 
   /// Drops decrypted data from memory when the vault locks.
-  void clear() => emit(const MediaState());
+  void clear() {
+    _thumbnails.clear();
+    emit(const MediaState());
+  }
 
-  Future<int> importFromPicker() async {
-    final added = await _repository.importFromPicker();
+  Future<Uint8List?> thumbnail(String id) =>
+      _thumbnails.putIfAbsent(id, () => _repository.thumbnail(id));
+
+  Future<Uint8List> original(String id) => _repository.original(id);
+
+  Future<File> openVideo(String id) => _repository.openVideo(id);
+
+  /// Opens the system Photo Picker. Returns (imported, picked).
+  Future<(int, int)> importFromPicker() async {
+    final picked = await _picker.pickPhotosAndVideos();
+    if (picked.isEmpty) return (0, 0);
+    final added = await _repository.import(picked);
     emit(MediaState(status: state.status, items: [...added, ...state.items]));
-    return added.length;
+    return (added.length, picked.length);
   }
 
   Future<void> delete(Set<String> ids) async {
     await _repository.delete(ids);
+    ids.forEach(_thumbnails.remove);
     emit(
       MediaState(
         status: state.status,
