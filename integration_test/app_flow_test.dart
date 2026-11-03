@@ -97,6 +97,9 @@ void main() {
       ),
       keystore: FakeKeystore(),
       biometrics: biometrics,
+      mediaPicker: FakeMediaPicker(),
+      documentPicker: FakeDocumentPicker(),
+      scanCamera: FakeScanCamera(),
       kdf: KdfParams.testing,
     );
     await tester.pumpWidget(const VaultApp());
@@ -171,29 +174,46 @@ void main() {
     expect(find.text('Your vault'), findsOneWidget);
     await shot(tester, 'home');
 
-    // --- Gallery and viewer -------------------------------------------
+    // --- Gallery: import (encrypt), view, favourite, select -----------
     await openTab(tester, 'Gallery');
+    await settle(tester);
+    expect(find.text('No photos yet'), findsOneWidget);
+    await shot(tester, 'gallery_empty');
+    await tester.tap(find.text('Import'));
+    await settleFor(tester, 1500);
+    await settle(tester);
+    expect(find.text('Originals are still in your gallery'), findsOneWidget);
+    await shot(tester, 'originals_reminder');
+    await tester.tap(find.text('Got it'));
     await settle(tester);
     await shot(tester, 'gallery');
     await tester.tap(find.byType(GridView).hitTestable().first);
+    await settleFor(tester, 800);
     await settle(tester);
     await shot(tester, 'viewer');
     await tester.tap(find.text('Favourite'));
     await settle(tester);
     await tester.pageBack();
     await settle(tester);
-    await tester.longPress(find.byIcon(Icons.landscape_rounded).first);
+    await tester.longPress(find.byType(GridView).hitTestable().first);
     await settle(tester);
     await shot(tester, 'gallery_selecting');
     await tester.tap(find.byTooltip('Cancel selection'));
     await settle(tester);
 
-    // --- Files and preview --------------------------------------------
+    // --- Files: import (encrypt), preview the decrypted text ----------
     await openTab(tester, 'Files');
     await settle(tester);
-    await shot(tester, 'files');
-    await tester.tap(find.text('Passport.pdf'));
+    await tester.tap(find.text('Add'));
     await settle(tester);
+    await tester.tap(find.text('Documents'));
+    await settleFor(tester, 1200);
+    await settle(tester);
+    await shot(tester, 'files');
+    await tester.tap(find.text('Wi-Fi codes.txt'));
+    await settleFor(tester, 800);
+    await settle(tester);
+    expect(find.text('Router: 7741-ALPHA'), findsOneWidget);
     await shot(tester, 'file_preview');
     await tester.pageBack();
     await settle(tester);

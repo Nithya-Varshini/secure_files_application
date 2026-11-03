@@ -1,9 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/widgets.dart';
+import 'package:image/image.dart' as img;
 import 'package:secure_files_application/core/crypto/vault_crypto.dart';
 import 'package:secure_files_application/core/platform/biometric_auth.dart';
 import 'package:secure_files_application/core/platform/hardware_keystore.dart';
+import 'package:secure_files_application/core/platform/pickers.dart';
+import 'package:secure_files_application/features/scanner/data/scan_camera.dart';
 
 /// Stands in for the Android Keystore: each alias gets a random key that
 /// lives only in this object, just as a hardware key never leaves the chip.
@@ -55,4 +59,62 @@ class FakeBiometrics implements BiometricAuth {
 
   @override
   Future<bool> authenticate(String reason) async => accept;
+}
+
+/// Returns a fixed set of "picked" photos instead of opening the system UI.
+class FakeMediaPicker implements MediaPicker {
+  @override
+  Future<List<PickedFile>> pickPhotosAndVideos() async => [
+    for (var i = 0; i < 3; i++)
+      PickedFile(
+        name: 'Holiday ${i + 1}.jpg',
+        open: () => Stream.value(sampleJpeg(hue: i * 90)),
+      ),
+  ];
+}
+
+class FakeDocumentPicker implements DocumentPicker {
+  final saved = <String>[];
+
+  @override
+  Future<List<PickedFile>> pickDocuments() async => [
+    PickedFile(
+      name: 'Wi-Fi codes.txt',
+      open: () => Stream.value('Router: 7741-ALPHA'.codeUnits),
+    ),
+  ];
+
+  @override
+  Future<bool> saveCopy({
+    required String name,
+    required Uint8List bytes,
+    required String mimeType,
+  }) async {
+    saved.add(name);
+    return true;
+  }
+}
+
+/// A camera that "photographs" a generated page.
+class FakeScanCamera implements ScanCamera {
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<Uint8List> capture() async => sampleJpeg(hue: 40);
+
+  @override
+  Future<void> setTorch(bool on) async {}
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Widget buildPreview() => const ColoredBox(color: Color(0xFF444444));
+}
+
+Uint8List sampleJpeg({int hue = 0}) {
+  final image = img.Image(width: 120, height: 160)
+    ..clear(img.ColorRgb8(200, (hue * 2) % 255, (hue * 3) % 255));
+  return img.encodeJpg(image);
 }
