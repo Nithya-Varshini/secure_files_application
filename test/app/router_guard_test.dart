@@ -14,6 +14,7 @@ void main() {
 
     test('allows the setup steps', () {
       expect(go(VaultStatus.noVault, '/welcome'), isNull);
+      expect(go(VaultStatus.noVault, '/restore'), isNull);
       expect(go(VaultStatus.noVault, '/setup/recovery'), isNull);
     });
   });
