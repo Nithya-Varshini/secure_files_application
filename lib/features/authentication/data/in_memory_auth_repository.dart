@@ -1,3 +1,5 @@
+import 'package:cryptography/cryptography.dart';
+
 import '../domain/auth_repository.dart';
 import '../domain/recovery_phrase.dart';
 
@@ -82,6 +84,27 @@ class InMemoryAuthRepository implements AuthRepository {
     _phrase = null;
     _unlocked = false;
     _biometrics = false;
+  }
+
+  @override
+  ({List<int> salt, List<int> wrap})? get recoveryEnvelope => null;
+
+  @override
+  Future<SecretKeyData?> openRecoveryEnvelope({
+    required List<String> words,
+    required List<int> salt,
+    required List<int> wrap,
+  }) async => null;
+
+  @override
+  Future<void> adoptRestoredVault({
+    required SecretKeyData master,
+    required List<int> recoverySalt,
+    required List<int> recoveryWrap,
+    required String pin,
+  }) async {
+    _pin = pin;
+    _unlocked = true;
   }
 
   @override

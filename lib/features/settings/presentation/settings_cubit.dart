@@ -21,6 +21,9 @@ class SettingsState extends Equatable {
   final bool screenshotProtection;
   final DateTime? lastBackupAt;
 
+  bool backupIsRecent(DateTime now) =>
+      lastBackupAt != null && now.difference(lastBackupAt!).inDays < 30;
+
   SettingsState copyWith({
     ThemeMode? themeMode,
     AutoLockDelay? autoLock,

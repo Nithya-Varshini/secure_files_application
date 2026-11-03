@@ -11,6 +11,7 @@ import '../core/storage/vault_paths.dart';
 import '../features/authentication/data/local_auth_repository.dart';
 import '../features/authentication/domain/auth_repository.dart';
 import '../features/authentication/presentation/session_cubit.dart';
+import '../features/backup_restore/data/backup_service.dart';
 import '../core/platform/pickers.dart';
 import '../core/platform/thumbnailer.dart';
 import '../features/files/data/local_files_repository.dart';
@@ -84,6 +85,7 @@ Future<void> configureDependencies({
     ..registerLazySingleton<NotesRepository>(
       () => LocalNotesRepository(getIt()),
     )
+    ..registerLazySingleton(() => BackupService(getIt(), getIt(), getIt()))
     ..registerSingleton(SessionCubit(auth, lockout: lockout))
     ..registerSingleton(
       SettingsCubit(file: vaultPaths.settings, initial: settings),

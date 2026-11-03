@@ -198,11 +198,34 @@ class LocalAuthRepository implements AuthRepository {
   Future<SecretKeyData?> _openWithPhrase(List<String> words) async {
     final header = _header;
     if (header == null) return null;
-    final kek = await _recoveryKey(words, header.recoverySalt);
+    return openRecoveryEnvelope(
+      words: words,
+      salt: header.recoverySalt,
+      wrap: header.recoveryWrap,
+    );
+  }
+
+  // --- AuthRepository ------------------------------------------------------
+
+  @override
+  ({List<int> salt, List<int> wrap})? get recoveryEnvelope {
+    final header = _header;
+    return header == null
+        ? null
+        : (salt: header.recoverySalt, wrap: header.recoveryWrap);
+  }
+
+  @override
+  Future<SecretKeyData?> openRecoveryEnvelope({
+    required List<String> words,
+    required List<int> salt,
+    required List<int> wrap,
+  }) async {
+    final kek = await _recoveryKey(words, salt);
     if (kek == null) return null;
     try {
       return SecretKeyData(
-        await VaultCrypto.open(header.recoveryWrap, kek, aad: _recoveryAad),
+        await VaultCrypto.open(wrap, kek, aad: _recoveryAad),
       );
     } on CryptoFailure {
       return null;
@@ -211,7 +234,30 @@ class LocalAuthRepository implements AuthRepository {
     }
   }
 
-  // --- AuthRepository ------------------------------------------------------
+  @override
+  Future<void> adoptRestoredVault({
+    required SecretKeyData master,
+    required List<int> recoverySalt,
+    required List<int> recoveryWrap,
+    required String pin,
+  }) async {
+    await _paths.ensure();
+    // A new device: the PIN layer gets a fresh salt and this phone's own
+    // Keystore key; the recovery envelope carries over unchanged.
+    final pinLayer = await _wrapForPin(master, pin);
+    await _save(
+      VaultHeader(
+        kdf: _kdf,
+        pinSalt: pinLayer.salt,
+        pinWrap: pinLayer.wrap,
+        hardwareBound: pinLayer.hw,
+        recoverySalt: recoverySalt,
+        recoveryWrap: recoveryWrap,
+      ),
+    );
+    await writeLockout(const LockoutState());
+    await _key.unlock(master);
+  }
 
   @override
   Future<void> createVault({

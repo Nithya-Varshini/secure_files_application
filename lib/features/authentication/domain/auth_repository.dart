@@ -1,3 +1,5 @@
+import 'package:cryptography/cryptography.dart';
+
 /// Failed-attempt counter, persisted so that killing and restarting the app
 /// does not reset the wait.
 class LockoutState {
@@ -67,6 +69,26 @@ abstract interface class AuthRepository {
   void lock();
 
   Future<void> deleteVault();
+
+  /// The master key wrapped by the recovery phrase, as stored in the
+  /// header. Copied into backups so the phrase alone can open them.
+  ({List<int> salt, List<int> wrap})? get recoveryEnvelope;
+
+  /// Opens a backup's recovery envelope with the phrase. Null if wrong.
+  Future<SecretKeyData?> openRecoveryEnvelope({
+    required List<String> words,
+    required List<int> salt,
+    required List<int> wrap,
+  });
+
+  /// Installs a restored vault: keeps the backup's master key and recovery
+  /// envelope, sets a new PIN bound to this device, and unlocks.
+  Future<void> adoptRestoredVault({
+    required SecretKeyData master,
+    required List<int> recoverySalt,
+    required List<int> recoveryWrap,
+    required String pin,
+  });
 
   Future<LockoutState> readLockout();
 

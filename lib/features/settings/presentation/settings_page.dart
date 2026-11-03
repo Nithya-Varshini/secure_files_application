@@ -107,7 +107,7 @@ class SettingsPage extends StatelessWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('Version'),
-                subtitle: Text('0.1.0 · Preview build'),
+                subtitle: Text('0.2.0'),
               ),
             ],
           ),
@@ -175,16 +175,19 @@ class SettingsPage extends StatelessWidget {
             const SizedBox(height: 16),
             const Text(
               'Everything in the vault is encrypted on this phone with '
-              'AES-256-GCM before it is stored, including file names and '
-              'thumbnails.\n\n'
-              'Your PIN never leaves the device. It unlocks a key that is also '
-              "bound to this phone's secure hardware, so copying the files "
-              'elsewhere does not help an attacker.\n\n'
+              'AES-256-GCM before it is stored, each file with its own key. '
+              'Names, notes, dates and thumbnails are encrypted too.\n\n'
+              'Your PIN is stretched with Argon2id and never stored. The key '
+              "it unlocks is also bound to this phone's secure hardware "
+              '(Android Keystore), so copying the files to another device '
+              'does not help an attacker.\n\n'
               'There is no account and no server. We cannot see your data, '
               'and we cannot reset your PIN; your recovery phrase is the only '
               'way back in.\n\n'
-              'Preview build: these protections are being built module by '
-              'module and are not active yet.',
+              'Some viewers (PDFs, videos) briefly need a decrypted copy in '
+              "the app's private storage; it is deleted when you close it or "
+              'the vault locks.\n\n'
+              'This app has not yet had an independent security audit.',
             ),
           ],
         ),
