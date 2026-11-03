@@ -79,18 +79,18 @@ class _Branch extends StatelessWidget {
       ignoring: !active,
       child: ExcludeSemantics(
         excluding: !active,
-        child: TickerMode(
-          enabled: active,
-          child: AnimatedOpacity(
-            opacity: active ? 1 : 0,
+        // TickerMode wraps only the tab's content. If it wrapped the fade
+        // too, the outgoing tab's fade-out would freeze at full opacity and
+        // keep covering the tab underneath.
+        child: AnimatedOpacity(
+          opacity: active ? 1 : 0,
+          duration: duration,
+          curve: Curves.easeOut,
+          child: AnimatedScale(
+            scale: active ? 1 : 0.98,
             duration: duration,
             curve: Curves.easeOut,
-            child: AnimatedScale(
-              scale: active ? 1 : 0.98,
-              duration: duration,
-              curve: Curves.easeOut,
-              child: child,
-            ),
+            child: TickerMode(enabled: active, child: child),
           ),
         ),
       ),

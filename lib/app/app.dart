@@ -23,6 +23,7 @@ class _VaultAppState extends State<VaultApp> {
   final _session = getIt<SessionCubit>();
   final _settings = getIt<SettingsCubit>();
   late final GoRouter _router = createRouter(_session);
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
   late final AppLifecycleListener _lifecycle;
   DateTime? _hiddenAt;
 
@@ -76,6 +77,7 @@ class _VaultAppState extends State<VaultApp> {
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
             themeMode: settings.themeMode,
+            scaffoldMessengerKey: _messenger,
             routerConfig: _router,
           ),
         ),
@@ -94,6 +96,8 @@ class _VaultAppState extends State<VaultApp> {
       files.load();
       notes.load();
     } else {
+      // Messages like "Backup saved" must not linger on the lock screen.
+      _messenger.currentState?.clearSnackBars();
       media.clear();
       files.clear();
       notes.clear();

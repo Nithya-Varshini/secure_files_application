@@ -100,6 +100,8 @@ class _NotesPageState extends State<NotesPage> {
         },
       ),
       floatingActionButton: OpenContainer(
+        // Root navigator: the opened page covers the bottom navigation bar.
+        useRootNavigator: true,
         closedElevation: 3,
         openElevation: 0,
         closedColor: scheme.primaryContainer,
@@ -174,6 +176,8 @@ class _NoteCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: OpenContainer(
+        // Root navigator: the opened page covers the bottom navigation bar.
+        useRootNavigator: true,
         closedElevation: 0,
         openElevation: 0,
         closedColor: scheme.surfaceContainerLow,

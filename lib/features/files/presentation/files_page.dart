@@ -159,6 +159,8 @@ class _FilesPageState extends State<FilesPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        // Tabs stay mounted together, so each FAB needs its own hero tag.
+        heroTag: 'files-fab',
         onPressed: () => showImportSheet(context),
         icon: const Icon(Icons.add_rounded),
         label: const Text('Add'),

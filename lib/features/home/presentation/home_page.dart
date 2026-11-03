@@ -73,11 +73,15 @@ class HomePage extends StatelessWidget {
           const SliverToBoxAdapter(child: SectionHeader(title: 'Your vault')),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: SliverGrid.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.5,
+            // Fixed height rather than an aspect ratio: on narrow phones a
+            // width-derived height was too short for the text (11 px overflow).
+            sliver: SliverGrid.list(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                mainAxisExtent: 136,
+              ),
               children: [
                 _CategoryCard(
                   icon: Icons.photo_outlined,
@@ -261,23 +265,28 @@ class _QuickAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Material(
-          color: scheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: onTap,
-            child: SizedBox.square(
-              dimension: 64,
+    // Icon and label form one tap target: people tap the word too.
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: scheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Icon(icon, color: scheme.onSecondaryContainer),
             ),
-          ),
+            const SizedBox(height: 8),
+            Text(label, style: Theme.of(context).textTheme.labelMedium),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(label, style: Theme.of(context).textTheme.labelMedium),
-      ],
+      ),
     );
   }
 }
@@ -369,6 +378,8 @@ class _RecentStrip extends StatelessWidget {
         itemBuilder: (context, i) => SizedBox.square(
           dimension: 112,
           child: OpenContainer(
+            // Root navigator: the opened page covers the bottom navigation bar.
+            useRootNavigator: true,
             closedElevation: 0,
             openElevation: 0,
             closedColor: Colors.transparent,

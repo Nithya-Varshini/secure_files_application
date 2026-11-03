@@ -54,7 +54,11 @@ class _SetupPinPageState extends State<SetupPinPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(
+        // First page of the setup ShellRoute's own navigator, so Flutter
+        // shows no back arrow by itself.
+        leading: BackButton(onPressed: () => context.go(Routes.welcome)),
+      ),
       body: SafeArea(
         child: ScrollFill(
           child: Padding(

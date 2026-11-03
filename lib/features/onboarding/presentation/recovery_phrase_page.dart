@@ -96,42 +96,51 @@ class _PhraseGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final grid = GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: words.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 3.6,
+    // A plain Column of Rows, not a GridView: this sits inside ScrollFill's
+    // IntrinsicHeight, and lazy viewports cannot report intrinsic sizes.
+    Widget tile(int i) => Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
       ),
-      itemBuilder: (context, i) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 26,
-              child: Text(
-                '${i + 1}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 26,
+            child: Text(
+              '${i + 1}',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Text(
+            words[i],
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+    final grid = Column(
+      children: [
+        for (var i = 0; i < words.length; i += 2)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 10),
+            child: Row(
+              children: [
+                Expanded(child: tile(i)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: i + 1 < words.length ? tile(i + 1) : const SizedBox(),
                 ),
-              ),
+              ],
             ),
-            Text(
-              words[i],
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
 
     // Blurred until tapped, so a glance over the shoulder reveals nothing.

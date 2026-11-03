@@ -165,6 +165,7 @@ class _GalleryPageState extends State<GalleryPage> {
           scale: _selecting ? 0 : 1,
           duration: const Duration(milliseconds: 200),
           child: FloatingActionButton.extended(
+            heroTag: 'gallery-fab',
             onPressed: () => runImport(context, ImportSource.photos),
             icon: const Icon(Icons.add_photo_alternate_outlined),
             label: const Text('Import'),
@@ -205,6 +206,8 @@ class _MediaTile extends StatelessWidget {
         child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
       ),
       child: OpenContainer(
+        // Root navigator: the opened page covers the bottom navigation bar.
+        useRootNavigator: true,
         tappable: false,
         closedElevation: 0,
         openElevation: 0,
