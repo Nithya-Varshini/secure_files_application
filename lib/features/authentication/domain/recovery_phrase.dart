@@ -1,21 +1,18 @@
-import 'dart:math';
+import 'package:bip39_mnemonic/bip39_mnemonic.dart';
 
-/// Generates the 12-word recovery phrase.
+import '../../../core/crypto/vault_crypto.dart';
+
+/// The 12-word recovery phrase, in standard BIP39 form: 128 bits of random
+/// entropy plus a 4-bit checksum, written with the official 2048-word
+/// English list (11 bits per word).
 ///
-/// PREVIEW: uses a short demo word list (128 words = 7 bits per word,
-/// 84 bits total). Module H swaps in the 2048-word BIP39 list, giving
-/// 11 bits per word and 128 bits of entropy plus a checksum.
+/// 2^128 possibilities cannot be brute-forced at any speed, so the phrase is
+/// turned into a key with HKDF rather than a slow password KDF.
 abstract final class RecoveryPhrase {
   static const wordCount = 12;
 
-  static List<String> generate({Random? random}) {
-    // Random.secure() draws from the OS CSPRNG: never use Random() for secrets.
-    final rng = random ?? Random.secure();
-    final pool = [..._demoWords]..shuffle(rng);
-    return pool.take(wordCount).toList(growable: false);
-  }
-
-  static int get demoWordListSize => _demoWords.length;
+  static List<String> generate() =>
+      Mnemonic(VaultCrypto.randomBytes(16), Language.english).words;
 
   static List<String> normalise(String input) => input
       .toLowerCase()
@@ -23,134 +20,18 @@ abstract final class RecoveryPhrase {
       .where((w) => w.isNotEmpty)
       .toList();
 
-  static const _demoWords = [
-    'acorn',
-    'amber',
-    'anchor',
-    'apple',
-    'arrow',
-    'aspen',
-    'atlas',
-    'autumn',
-    'badge',
-    'bamboo',
-    'beacon',
-    'berry',
-    'birch',
-    'blossom',
-    'breeze',
-    'bridge',
-    'cabin',
-    'candle',
-    'canyon',
-    'castle',
-    'cedar',
-    'cherry',
-    'cloud',
-    'clover',
-    'cobalt',
-    'comet',
-    'coral',
-    'cotton',
-    'crystal',
-    'dawn',
-    'delta',
-    'desert',
-    'dolphin',
-    'dragon',
-    'eagle',
-    'ember',
-    'falcon',
-    'feather',
-    'fern',
-    'fiddle',
-    'flame',
-    'forest',
-    'fossil',
-    'garden',
-    'garnet',
-    'glacier',
-    'harbor',
-    'harvest',
-    'hazel',
-    'helmet',
-    'honey',
-    'horizon',
-    'island',
-    'ivory',
-    'jacket',
-    'jasmine',
-    'jungle',
-    'kettle',
-    'kitten',
-    'lagoon',
-    'lantern',
-    'lemon',
-    'lily',
-    'lotus',
-    'magnet',
-    'maple',
-    'marble',
-    'meadow',
-    'meteor',
-    'mint',
-    'mirror',
-    'mosaic',
-    'nectar',
-    'nickel',
-    'nutmeg',
-    'oasis',
-    'ocean',
-    'olive',
-    'onyx',
-    'orbit',
-    'orchid',
-    'otter',
-    'paddle',
-    'panda',
-    'pebble',
-    'pepper',
-    'piano',
-    'pilot',
-    'planet',
-    'plum',
-    'prism',
-    'quartz',
-    'quill',
-    'rabbit',
-    'raven',
-    'reef',
-    'ribbon',
-    'river',
-    'robin',
-    'saddle',
-    'saffron',
-    'salmon',
-    'sapphire',
-    'shadow',
-    'silver',
-    'spruce',
-    'summit',
-    'sunset',
-    'thistle',
-    'thunder',
-    'tiger',
-    'timber',
-    'topaz',
-    'tulip',
-    'velvet',
-    'violet',
-    'walnut',
-    'willow',
-    'winter',
-    'zephyr',
-    'yarrow',
-    'zinnia',
-    'meridian',
-    'lichen',
-    'basalt',
-    'cinder',
-    'drift',
-    'quiver',
-  ];
+  /// True if every word is in the list and the checksum matches, which
+  /// catches most typos and swapped words before any key is tried.
+  static bool isValid(List<String> words) => entropyOf(words) != null;
+
+  static List<int>? entropyOf(List<String> words) {
+    if (words.length != wordCount) return null;
+    try {
+      return Mnemonic.fromWords(words: words).entropy;
+    } on Exception {
+      return null;
+    } on Error {
+      return null;
+    }
+  }
 }

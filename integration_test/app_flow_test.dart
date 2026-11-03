@@ -8,8 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:secure_files_application/app/app.dart';
 import 'package:secure_files_application/app/di.dart';
+import 'package:secure_files_application/core/crypto/vault_crypto.dart';
+import 'package:secure_files_application/core/storage/vault_paths.dart';
 import 'package:secure_files_application/features/onboarding/presentation/recovery_phrase_page.dart';
 import 'package:secure_files_application/features/onboarding/presentation/vault_setup_cubit.dart';
+
+import '../test/support/fakes.dart';
 
 /// End-to-end walk through the whole app, as a user would tap it.
 ///
@@ -79,8 +83,22 @@ void main() {
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
+    // Real crypto and real files, in a throwaway folder. The Keystore and
+    // fingerprint sensor are simulated (they exist only on Android), and
+    // Argon2id uses test-strength parameters to keep the run fast.
+    final biometrics = FakeBiometrics();
+    final dir = await Directory.systemTemp.createTemp('vault_e2e');
+    addTearDown(() => dir.delete(recursive: true));
     await getIt.reset();
-    configureDependencies();
+    await configureDependencies(
+      paths: VaultPaths(
+        root: Directory('${dir.path}/vault'),
+        temp: Directory('${dir.path}/tmp'),
+      ),
+      keystore: FakeKeystore(),
+      biometrics: biometrics,
+      kdf: KdfParams.testing,
+    );
     await tester.pumpWidget(const VaultApp());
     await settle(tester);
 
@@ -241,8 +259,18 @@ void main() {
     await settle(tester);
     await shot(tester, 'home_light');
 
-    // --- Lock, wrong PIN, unlock --------------------------------------
+    // --- Lock, fingerprint unlock -------------------------------------
     await tester.tap(find.byTooltip('Lock vault'));
+    await settleFor(tester, 1500);
+    await settle(tester);
+    // The lock screen offers the fingerprint at once; it succeeds.
+    expect(find.text('Your vault'), findsOneWidget);
+    await shot(tester, 'fingerprint_unlocked');
+
+    // --- Lock, cancelled fingerprint, wrong PIN, right PIN -------------
+    biometrics.accept = false;
+    await tester.tap(find.byTooltip('Lock vault'));
+    await settleFor(tester, 800);
     await settle(tester);
     expect(find.text('Welcome back'), findsOneWidget);
     // Nothing about vault activity may remain visible once locked.

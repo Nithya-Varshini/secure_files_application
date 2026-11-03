@@ -47,3 +47,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // AppCompat launch theme: BiometricPrompt (local_auth) crashes on
+    // Android 8 and below without it.
+    implementation("androidx.appcompat:appcompat:1.7.0")
+}
