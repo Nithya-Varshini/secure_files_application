@@ -1,22 +1,20 @@
-import 'dart:math';
-
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/di.dart';
 import '../../../app/routes.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/buttons.dart';
-import '../../../core/widgets/mock_paper.dart';
 import '../../files/presentation/files_cubit.dart';
+import '../data/scan_camera.dart';
 import '../domain/scan_page.dart';
+import '../domain/scan_pdf.dart';
 
-/// Capture pages, review them, and save one encrypted PDF.
-///
-/// PREVIEW: the viewfinder is simulated; CameraX replaces it in Module E.
-/// Pages never touch the public gallery (threat model L7).
+/// Capture pages, review them, and save one encrypted PDF. Pages stay in
+/// memory; the camera's temporary JPEG is deleted as soon as it is read.
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key});
 
@@ -25,37 +23,91 @@ class ScannerPage extends StatefulWidget {
 }
 
 class _ScannerPageState extends State<ScannerPage>
-    with TickerProviderStateMixin {
-  final _random = Random();
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  final ScanCamera _camera = getIt<ScanCamera>();
   final List<ScanPage> _pages = [];
   late final AnimationController _flash = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 260),
   );
-  late final AnimationController _scanLine = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  )..repeat(reverse: true);
   final _reviewController = PageController();
+  bool _cameraReady = false;
+  String? _cameraError;
   bool _reviewing = false;
+  bool _capturing = false;
   bool _saving = false;
   bool _torch = false;
   int _current = 0;
   int _nextId = 0;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startCamera();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _camera.stop();
     _flash.dispose();
-    _scanLine.dispose();
     _reviewController.dispose();
     super.dispose();
   }
 
-  void _capture() {
+  // Release the camera while the app is in the background.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _camera.stop();
+      if (mounted) setState(() => _cameraReady = false);
+    } else if (state == AppLifecycleState.resumed && !_reviewing) {
+      _startCamera();
+    }
+  }
+
+  Future<void> _startCamera() async {
+    setState(() => _cameraError = null);
+    try {
+      await _camera.start();
+      if (mounted) setState(() => _cameraReady = true);
+    } on CameraUnavailableException catch (e) {
+      if (mounted) {
+        setState(
+          () => _cameraError = e.reason == 'CameraAccessDenied'
+              ? 'Camera access is off. Allow it in Settings to scan.'
+              : "The camera couldn't start.",
+        );
+      }
+    }
+  }
+
+  Future<void> _capture() async {
+    if (_capturing || !_cameraReady) return;
+    setState(() => _capturing = true);
     HapticFeedback.mediumImpact();
     _flash.forward(from: 0);
+    try {
+      final jpeg = await _camera.capture();
+      if (mounted) {
+        setState(() => _pages.add(ScanPage(id: _nextId++, jpeg: jpeg)));
+      }
+    } on Exception {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("That photo didn't work. Try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
+  void _openReview() {
     setState(() {
-      _pages.add(ScanPage(id: _nextId++, seed: _random.nextInt(1 << 20)));
+      _reviewing = true;
+      _current = 0;
     });
   }
 
@@ -78,15 +130,22 @@ class _ScannerPageState extends State<ScannerPage>
     setState(() => _saving = true);
     final name = 'Scan ${formatDate(DateTime.now())}';
     final messenger = ScaffoldMessenger.of(context);
-    await context.read<FilesCubit>().addScan(
-      name: name,
-      pageCount: _pages.length,
-    );
-    if (!mounted) return;
-    context.go(Routes.files);
-    messenger.showSnackBar(
-      SnackBar(content: Text('"$name.pdf" encrypted and saved to Scans')),
-    );
+    final files = context.read<FilesCubit>();
+    try {
+      final pdf = await ScanPdf.build(_pages);
+      await files.addScan(name: name, pdf: pdf);
+      if (!mounted) return;
+      context.go(Routes.files);
+      messenger.showSnackBar(
+        SnackBar(content: Text('"$name.pdf" encrypted and saved to Scans')),
+      );
+    } on Exception {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text("The PDF couldn't be created.")),
+      );
+    }
   }
 
   @override
@@ -104,6 +163,7 @@ class _ScannerPageState extends State<ScannerPage>
   }
 
   Widget _buildCapture(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       key: const ValueKey('capture'),
       value: SystemUiOverlayStyle.light,
@@ -119,7 +179,12 @@ class _ScannerPageState extends State<ScannerPage>
               icon: Icon(
                 _torch ? Icons.flash_on_rounded : Icons.flash_off_rounded,
               ),
-              onPressed: () => setState(() => _torch = !_torch),
+              onPressed: _cameraReady
+                  ? () {
+                      setState(() => _torch = !_torch);
+                      _camera.setTorch(_torch);
+                    }
+                  : null,
             ),
           ],
         ),
@@ -127,70 +192,37 @@ class _ScannerPageState extends State<ScannerPage>
           children: [
             Expanded(
               child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(36),
-                      child: AspectRatio(
-                        aspectRatio: 0.72,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Transform.rotate(
-                              angle: -0.03,
-                              child: Opacity(
-                                opacity: 0.85,
-                                child: MockPaper(seed: _nextId * 31 + 7),
-                              ),
-                            ),
-                            CustomPaint(
-                              painter: _ViewfinderPainter(
-                                Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                            AnimatedBuilder(
-                              animation: _scanLine,
-                              builder: (context, _) => Align(
-                                alignment: Alignment(
-                                  0,
-                                  -1 + 2 * _scanLine.value,
-                                ),
-                                child: Container(
-                                  height: 2,
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        blurRadius: 12,
-                                      ),
-                                    ],
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primaryContainer,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                  if (_cameraError != null)
+                    _CameraError(message: _cameraError!, onRetry: _startCamera)
+                  else if (!_cameraReady)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: _camera.buildPreview(),
                       ),
                     ),
-                  ),
-                  const Positioned(
-                    top: 8,
-                    left: 0,
-                    right: 0,
-                    child: Center(child: _HintChip()),
-                  ),
+                  if (_cameraReady)
+                    Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: CustomPaint(
+                        painter: _ViewfinderPainter(scheme.primary),
+                      ),
+                    ),
+                  if (_cameraReady)
+                    const Positioned(
+                      top: 8,
+                      left: 0,
+                      right: 0,
+                      child: Center(child: _HintChip()),
+                    ),
                   IgnorePointer(
                     child: AnimatedBuilder(
                       animation: _flash,
-                      builder: (context, _) => Container(
+                      builder: (context, _) => ColoredBox(
                         color: Colors.white.withValues(
                           alpha: _flash.isAnimating ? 1 - _flash.value : 0,
                         ),
@@ -209,20 +241,19 @@ class _ScannerPageState extends State<ScannerPage>
                   children: [
                     _PagesThumb(
                       pages: _pages,
-                      onTap: _pages.isEmpty
-                          ? null
-                          : () => setState(() => _reviewing = true),
+                      onTap: _pages.isEmpty ? null : _openReview,
                     ),
-                    _ShutterButton(onPressed: _capture),
+                    _ShutterButton(
+                      enabled: _cameraReady && !_capturing,
+                      onPressed: _capture,
+                    ),
                     SizedBox(
                       width: 64,
                       child: TextButton(
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.white,
                         ),
-                        onPressed: _pages.isEmpty
-                            ? null
-                            : () => setState(() => _reviewing = true),
+                        onPressed: _pages.isEmpty ? null : _openReview,
                         child: const Text('Done'),
                       ),
                     ),
@@ -245,7 +276,10 @@ class _ScannerPageState extends State<ScannerPage>
         leading: IconButton(
           tooltip: 'Back to camera',
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => setState(() => _reviewing = false),
+          onPressed: () {
+            setState(() => _reviewing = false);
+            _startCamera();
+          },
         ),
         title: Text(
           _pages.length == 1
@@ -262,23 +296,13 @@ class _ScannerPageState extends State<ScannerPage>
                 itemCount: _pages.length,
                 onPageChanged: (i) => setState(() => _current = i),
                 itemBuilder: (context, i) => Padding(
-                  padding: const EdgeInsets.fromLTRB(40, 16, 40, 8),
+                  padding: const EdgeInsets.fromLTRB(32, 16, 32, 8),
                   child: Center(
                     child: AnimatedRotation(
                       turns: _pages[i].quarterTurns / 4,
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOutCubic,
-                      child: AspectRatio(
-                        aspectRatio: 0.72,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          child: MockPaper(
-                            key: ValueKey(_pages[i].filter),
-                            seed: _pages[i].seed,
-                            tone: _toneFor(_pages[i].filter),
-                          ),
-                        ),
-                      ),
+                      child: _PageImage(page: _pages[i]),
                     ),
                   ),
                 ),
@@ -320,7 +344,10 @@ class _ScannerPageState extends State<ScannerPage>
                 IconButton.filledTonal(
                   tooltip: 'Add a page',
                   icon: const Icon(Icons.add_a_photo_outlined),
-                  onPressed: () => setState(() => _reviewing = false),
+                  onPressed: () {
+                    setState(() => _reviewing = false);
+                    _startCamera();
+                  },
                 ),
                 const SizedBox(width: 12),
                 IconButton.filledTonal(
@@ -362,11 +389,7 @@ class _ScannerPageState extends State<ScannerPage>
                         width: 2,
                       ),
                     ),
-                    child: MockPaper(
-                      seed: _pages[i].seed,
-                      tone: _toneFor(_pages[i].filter),
-                      compact: true,
-                    ),
+                    child: _PageImage(page: _pages[i], thumbnail: true),
                   ),
                 ),
               ),
@@ -384,12 +407,97 @@ class _ScannerPageState extends State<ScannerPage>
       ),
     );
   }
+}
 
-  static PaperTone _toneFor(ScanFilter filter) => switch (filter) {
-    ScanFilter.original => PaperTone.original,
-    ScanFilter.blackWhite => PaperTone.mono,
-    ScanFilter.enhanced => PaperTone.enhanced,
-  };
+/// Shows a page with its filter previewed live via a colour matrix; the
+/// saved PDF applies the same filter for real with the image library.
+class _PageImage extends StatelessWidget {
+  const _PageImage({required this.page, this.thumbnail = false});
+
+  final ScanPage page;
+  final bool thumbnail;
+
+  static const _grey = <double>[
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+
+  static List<double> _contrast(double c, double offset) => [
+    c, 0, 0, 0, offset, //
+    0, c, 0, 0, offset,
+    0, 0, c, 0, offset,
+    0, 0, 0, 1, 0,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    Widget image = Image.memory(
+      page.jpeg,
+      fit: BoxFit.contain,
+      cacheWidth: thumbnail ? 120 : null,
+      gaplessPlayback: true,
+    );
+    switch (page.filter) {
+      case ScanFilter.original:
+        break;
+      case ScanFilter.blackWhite:
+        image = ColorFiltered(
+          colorFilter: ColorFilter.matrix(_contrast(1.6, -60)),
+          child: ColorFiltered(
+            colorFilter: const ColorFilter.matrix(_grey),
+            child: image,
+          ),
+        );
+      case ScanFilter.enhanced:
+        image = ColorFiltered(
+          colorFilter: ColorFilter.matrix(_contrast(1.2, -10)),
+          child: image,
+        );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(thumbnail ? 4 : 8),
+      child: image,
+    );
+  }
+}
+
+class _CameraError extends StatelessWidget {
+  const _CameraError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.no_photography_outlined,
+              color: Colors.white70,
+              size: 56,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.tonal(
+              onPressed: onRetry,
+              child: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _HintChip extends StatelessWidget {
@@ -403,24 +511,18 @@ class _HintChip extends StatelessWidget {
         color: Colors.black54,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.circle, size: 8, color: Color(0xFF4ADE80)),
-          SizedBox(width: 8),
-          Text(
-            'Edges found. Hold steady',
-            style: TextStyle(color: Colors.white, fontSize: 13),
-          ),
-        ],
+      child: const Text(
+        'Fit the page inside the corners',
+        style: TextStyle(color: Colors.white, fontSize: 13),
       ),
     );
   }
 }
 
 class _ShutterButton extends StatefulWidget {
-  const _ShutterButton({required this.onPressed});
+  const _ShutterButton({required this.enabled, required this.onPressed});
 
+  final bool enabled;
   final VoidCallback onPressed;
 
   @override
@@ -434,29 +536,34 @@ class _ShutterButtonState extends State<_ShutterButton> {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
+      enabled: widget.enabled,
       label: 'Capture page',
       child: GestureDetector(
         onTapDown: (_) => setState(() => _down = true),
         onTapCancel: () => setState(() => _down = false),
         onTapUp: (_) {
           setState(() => _down = false);
-          widget.onPressed();
+          if (widget.enabled) widget.onPressed();
         },
-        child: AnimatedScale(
-          scale: _down ? 0.88 : 1,
-          duration: const Duration(milliseconds: 120),
-          child: Container(
-            width: 78,
-            height: 78,
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white70, width: 4),
-            ),
-            child: const DecoratedBox(
+        child: AnimatedOpacity(
+          opacity: widget.enabled ? 1 : 0.4,
+          duration: const Duration(milliseconds: 150),
+          child: AnimatedScale(
+            scale: _down ? 0.88 : 1,
+            duration: const Duration(milliseconds: 120),
+            child: Container(
+              width: 78,
+              height: 78,
+              padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white,
+                border: Border.all(color: Colors.white70, width: 4),
+              ),
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
@@ -474,6 +581,7 @@ class _PagesThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 64,
       height: 72,
@@ -490,19 +598,19 @@ class _PagesThumb extends StatelessWidget {
                   clipBehavior: Clip.none,
                   children: [
                     Positioned.fill(
-                      child: MockPaper(seed: pages.last.seed, compact: true),
+                      child: _PageImage(page: pages.last, thumbnail: true),
                     ),
                     Positioned(
                       right: -6,
                       top: -6,
                       child: CircleAvatar(
                         radius: 11,
-                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        backgroundColor: scheme.primary,
                         child: Text(
                           '${pages.length}',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Theme.of(context).colorScheme.onPrimary,
+                            color: scheme.onPrimary,
                           ),
                         ),
                       ),
@@ -531,7 +639,7 @@ class _ViewfinderPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final corners = [
-      [Offset(0, length), Offset.zero, const Offset(length, 0)],
+      [const Offset(0, length), Offset.zero, const Offset(length, 0)],
       [Offset(w - length, 0), Offset(w, 0), Offset(w, length)],
       [Offset(w, h - length), Offset(w, h), Offset(w - length, h)],
       [Offset(length, h), Offset(0, h), Offset(0, h - length)],

@@ -1,27 +1,26 @@
-import 'package:equatable/equatable.dart';
+import 'dart:typed_data';
 
 enum ScanFilter { original, blackWhite, enhanced }
 
-class ScanPage extends Equatable {
+/// One captured page, held only in memory until it is saved as an
+/// encrypted PDF.
+class ScanPage {
   const ScanPage({
     required this.id,
-    required this.seed,
+    required this.jpeg,
     this.quarterTurns = 0,
     this.filter = ScanFilter.enhanced,
   });
 
   final int id;
-  final int seed;
+  final Uint8List jpeg;
   final int quarterTurns;
   final ScanFilter filter;
 
   ScanPage copyWith({int? quarterTurns, ScanFilter? filter}) => ScanPage(
     id: id,
-    seed: seed,
+    jpeg: jpeg,
     quarterTurns: quarterTurns ?? this.quarterTurns,
     filter: filter ?? this.filter,
   );
-
-  @override
-  List<Object?> get props => [id, seed, quarterTurns, filter];
 }
