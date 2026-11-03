@@ -11,12 +11,15 @@ import '../core/storage/vault_paths.dart';
 import '../features/authentication/data/local_auth_repository.dart';
 import '../features/authentication/domain/auth_repository.dart';
 import '../features/authentication/presentation/session_cubit.dart';
-import '../features/files/data/fake_files_repository.dart';
+import '../core/platform/pickers.dart';
+import '../core/platform/thumbnailer.dart';
+import '../features/files/data/local_files_repository.dart';
 import '../features/files/domain/files_repository.dart';
-import '../features/media_vault/data/fake_media_repository.dart';
+import '../features/media_vault/data/local_media_repository.dart';
 import '../features/media_vault/domain/media_repository.dart';
 import '../features/notes/data/local_notes_repository.dart';
 import '../features/notes/domain/notes_repository.dart';
+import '../features/scanner/data/scan_camera.dart';
 import '../features/settings/presentation/settings_cubit.dart';
 
 final getIt = GetIt.instance;
@@ -31,6 +34,10 @@ Future<void> configureDependencies({
   VaultPaths? paths,
   HardwareKeystore? keystore,
   BiometricAuth? biometrics,
+  MediaPicker? mediaPicker,
+  DocumentPicker? documentPicker,
+  ScanCamera? scanCamera,
+  Thumbnailer thumbnailer = const FlutterThumbnailer(),
   KdfParams kdf = KdfParams.recommended,
 }) async {
   final vaultPaths = paths ?? await VaultPaths.resolve();
@@ -61,8 +68,19 @@ Future<void> configureDependencies({
     ..registerSingleton<AuthRepository>(auth)
     ..registerLazySingleton(() => EncryptedIndex(getIt(), getIt()))
     ..registerLazySingleton(() => BlobStore(getIt(), getIt()))
-    ..registerLazySingleton<MediaRepository>(FakeMediaRepository.new)
-    ..registerLazySingleton<FilesRepository>(FakeFilesRepository.new)
+    ..registerSingleton<MediaPicker>(
+      mediaPicker ?? SystemMediaPicker(vaultPaths.cache),
+    )
+    ..registerSingleton<DocumentPicker>(
+      documentPicker ?? SystemDocumentPicker(vaultPaths.cache),
+    )
+    ..registerSingleton<ScanCamera>(scanCamera ?? DeviceScanCamera())
+    ..registerLazySingleton<MediaRepository>(
+      () => LocalMediaRepository(getIt(), getIt(), thumbnailer),
+    )
+    ..registerLazySingleton<FilesRepository>(
+      () => LocalFilesRepository(getIt(), getIt()),
+    )
     ..registerLazySingleton<NotesRepository>(
       () => LocalNotesRepository(getIt()),
     )

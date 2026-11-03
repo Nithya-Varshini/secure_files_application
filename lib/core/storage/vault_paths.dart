@@ -35,9 +35,39 @@ class VaultPaths {
     await temp.create(recursive: true);
   }
 
+  /// The app's cache directory; [temp] lives inside it.
+  Directory get cache => temp.parent;
+
   Future<void> wipeTemp() async {
     if (await temp.exists()) await temp.delete(recursive: true);
     await temp.create(recursive: true);
+    await wipePluginLeftovers();
+  }
+
+  /// Plugins that cannot work from memory leave plaintext in our cache:
+  /// pdfx writes the PDF and rendered pages, file_picker and image_picker
+  /// copy picked files. Everything is app-private, but it must not outlive
+  /// its use (threat model L7).
+  Future<void> wipePluginLeftovers() async {
+    if (!await cache.exists()) return;
+    await for (final entry in cache.list(followLinks: false)) {
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      final isPluginDir =
+          entry is Directory &&
+          (name == 'pdf_renderer_cache' || name == 'file_picker');
+      final isPluginFile =
+          entry is File &&
+          (name.endsWith('.pdf') ||
+              name.startsWith('image_picker') ||
+              name.startsWith('scaled_') ||
+              name.startsWith('CAP'));
+      try {
+        if (isPluginDir) await entry.delete(recursive: true);
+        if (isPluginFile) await entry.delete();
+      } on FileSystemException {
+        // Still in use (e.g. an open PDF); the next wipe removes it.
+      }
+    }
   }
 
   /// Removes every vault file. Without the keys the ciphertext would be
