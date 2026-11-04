@@ -37,11 +37,27 @@ class _BiometricSetupPageState extends State<BiometricSetupPage> {
     final setup = context.read<VaultSetupCubit>().state;
     // Deriving the PIN key takes about a second (Argon2id). The router then
     // redirects home as soon as the session reports the vault unlocked.
-    await context.read<SessionCubit>().createVault(
-      pin: setup.pin!,
-      phrase: setup.phrase,
-      enableBiometrics: setup.biometric,
-    );
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<SessionCubit>().createVault(
+        pin: setup.pin!,
+        phrase: setup.phrase,
+        enableBiometrics: setup.biometric,
+      );
+    } on Object catch (error, stack) {
+      // Never leave the user on a spinner: report it and allow a retry.
+      // Retrying is safe, because a new vault simply replaces the header.
+      FlutterError.reportError(
+        FlutterErrorDetails(exception: error, stack: stack),
+      );
+      if (!mounted) return;
+      setState(() => _opening = false);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Your vault couldn't be created. Please try again."),
+        ),
+      );
+    }
   }
 
   @override
