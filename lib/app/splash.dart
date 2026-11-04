@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Cold-start splash drawn over the app: the two arches of the Kwam icon draw
-/// themselves, a soft glow blooms behind them, the name fades in, then the
+/// Cold-start splash drawn over the app: light falls in from the top-left and
+/// the two arches of the Kwam icon zoom in one after the other, then the
 /// whole splash fades away to reveal the app (normally the lock screen).
 ///
 /// It sits above the router, so navigation and the auth guard are untouched,
@@ -89,11 +89,11 @@ class _SplashFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final outer = _phase(0.0, 0.36, Curves.easeInOutCubic);
-    final inner = _phase(0.12, 0.46, Curves.easeInOutCubic);
-    final glow = _phase(0.36, 0.62, Curves.easeOut);
-    final word = _phase(0.44, 0.66, Curves.easeOutCubic);
-    final exit = _phase(0.84, 1.0, Curves.easeIn);
+    final light = _phase(0.0, 0.5, Curves.easeOut);
+    // The inner arch follows the outer one, which reads as depth.
+    final outer = _phase(0.0, 0.45, Curves.easeOutCubic);
+    final inner = _phase(0.1, 0.55, Curves.easeOutCubic);
+    final exit = _phase(0.82, 1.0, Curves.easeInCubic);
     final shortest = MediaQuery.sizeOf(context).shortestSide;
     final markSize = math.min(shortest * 0.42, 190.0);
 
@@ -101,46 +101,30 @@ class _SplashFrame extends StatelessWidget {
       opacity: 1 - exit,
       child: ColoredBox(
         color: SplashOverlay.background,
-        child: Center(
-          child: Transform.scale(
-            // A gentle settle while drawing, then a slight lift as it leaves.
-            scale: 0.94 + 0.06 * Curves.easeOut.transform(outer) + 0.04 * exit,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: markSize,
-                  child: CustomPaint(
-                    painter: _ArchesPainter(
-                      outer: outer,
-                      inner: inner,
-                      glow: glow,
-                    ),
-                  ),
-                ),
-                SizedBox(height: markSize * 0.16),
-                Opacity(
-                  opacity: word,
-                  child: Transform.translate(
-                    offset: Offset(0, 12 * (1 - word)),
-                    child: ShaderMask(
-                      shaderCallback: (rect) => const LinearGradient(
-                        colors: [Color(0xFFE9E3FF), Color(0xFFA9B4FF)],
-                      ).createShader(rect),
-                      child: Text(
-                        'Kwam',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: markSize * 0.2,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 2 + 6 * (1 - word),
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            // Light falling in from the top-left corner, as on the icon.
+            gradient: RadialGradient(
+              center: const Alignment(-1.1, -1.1),
+              radius: 1.4,
+              colors: [
+                const Color(0xFF6D4FE0).withValues(alpha: 0.55 * light),
+                const Color(0xFF3B2A8F).withValues(alpha: 0.2 * light),
+                const Color(0x003B2A8F),
               ],
+              stops: const [0, 0.4, 1],
+            ),
+          ),
+          child: Center(
+            child: Transform.scale(
+              // On the way out the mark keeps zooming towards the viewer.
+              scale: 1 + 0.25 * exit,
+              child: SizedBox.square(
+                dimension: markSize,
+                child: CustomPaint(
+                  painter: _ArchesPainter(outer: outer, inner: inner),
+                ),
+              ),
             ),
           ),
         ),
@@ -149,20 +133,18 @@ class _SplashFrame extends StatelessWidget {
   }
 }
 
-/// Draws the arches as stroked paths so they can be "drawn" by trimming:
-/// up the left leg, over the top, down the right leg. Geometry and colours
-/// follow the launcher icon (tool/generate_icon.dart), in its 108-unit space.
+/// Draws the two arches, each zooming in from 55 % to full size while it
+/// fades in. Geometry and colours follow the launcher icon
+/// (tool/generate_icon.dart), in its 108-unit space, lit from the top-left.
 class _ArchesPainter extends CustomPainter {
-  _ArchesPainter({
-    required this.outer,
-    required this.inner,
-    required this.glow,
-  });
+  _ArchesPainter({required this.outer, required this.inner});
 
-  final double outer, inner, glow;
+  /// Entrance progress of each arch, 0..1.
+  final double outer, inner;
 
-  // Visible window of the 108-unit icon canvas.
+  // Visible window of the 108-unit icon canvas, and the zoom centre.
   static const _from = 28.0, _span = 52.0;
+  static const _centre = Offset(54, 54);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -171,22 +153,6 @@ class _ArchesPainter extends CustomPainter {
       ..save()
       ..scale(s)
       ..translate(-_from, -_from);
-
-    if (glow > 0) {
-      const centre = Offset(54, 60);
-      canvas.drawCircle(
-        centre,
-        30,
-        Paint()
-          ..shader = RadialGradient(
-            colors: [
-              const Color(0xFF6D4FE0).withValues(alpha: 0.45 * glow),
-              const Color(0x006D4FE0),
-            ],
-          ).createShader(Rect.fromCircle(center: centre, radius: 30)),
-      );
-    }
-
     _arch(
       canvas,
       centre: const Offset(54, 55.24),
@@ -228,15 +194,20 @@ class _ArchesPainter extends CustomPainter {
         false,
       )
       ..lineTo(centre.dx + radius, bottom);
-    final metric = path.computeMetrics().first;
     final bounds = Rect.fromLTRB(
       centre.dx - radius - width,
       centre.dy - radius - width,
       centre.dx + radius + width,
       bottom,
     );
+    final zoom = 0.55 + 0.45 * progress;
+    canvas
+      ..save()
+      ..translate(_centre.dx, _centre.dy)
+      ..scale(zoom)
+      ..translate(-_centre.dx, -_centre.dy);
     canvas.drawPath(
-      metric.extractPath(0, metric.length * progress),
+      path,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = width
@@ -244,12 +215,16 @@ class _ArchesPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: colors,
+          colors: [
+            for (final c in colors)
+              c.withValues(alpha: math.min(1, progress * 1.6)),
+          ],
         ).createShader(bounds),
     );
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(_ArchesPainter old) =>
-      old.outer != outer || old.inner != inner || old.glow != glow;
+      old.outer != outer || old.inner != inner;
 }

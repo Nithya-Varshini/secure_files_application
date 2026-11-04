@@ -25,7 +25,6 @@ void main() {
     expect(taps, 0);
 
     await tester.pumpAndSettle();
-    expect(find.text('Kwam'), findsNothing);
     await tester.tap(find.text('Go'));
     expect(taps, 1);
   });
@@ -33,13 +32,15 @@ void main() {
   testWidgets('is short when the system asks for no animations', (
     tester,
   ) async {
+    var taps = 0;
     await tester.pumpWidget(
       MediaQuery(
         data: const MediaQueryData(disableAnimations: true),
-        child: app(() {}),
+        child: app(() => taps++),
       ),
     );
     await tester.pump(const Duration(milliseconds: 450));
-    expect(find.text('Kwam'), findsNothing);
+    await tester.tap(find.text('Go'));
+    expect(taps, 1);
   });
 }
