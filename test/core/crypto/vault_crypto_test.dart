@@ -122,6 +122,21 @@ void main() {
       );
     });
 
+    test('HKDF default salt matches the old empty-salt keys', () async {
+      // Android's native HMAC rejects an empty key, so subkey() now sends
+      // 32 zero bytes. HMAC zero-pads keys, so vaults made before the
+      // change must still derive exactly the same subkeys.
+      final master = VaultCrypto.newKey();
+      final legacy = await Hkdf(hmac: Hmac.sha256(), outputLength: 32)
+          .deriveKey(
+            secretKey: master,
+            nonce: const [],
+            info: VaultCrypto.label('vault:index:v1'),
+          );
+      final current = await VaultCrypto.subkey(master, 'vault:index:v1');
+      expect(await current.extractBytes(), equals(await legacy.extractBytes()));
+    });
+
     test('KDF parameters survive a JSON round trip', () {
       final json = KdfParams.recommended.toJson();
       final back = KdfParams.fromJson(json);
