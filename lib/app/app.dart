@@ -14,6 +14,7 @@ import '../features/notes/presentation/notes_cubit.dart';
 import '../features/settings/presentation/settings_cubit.dart';
 import 'di.dart';
 import 'router.dart';
+import 'splash.dart';
 
 class VaultApp extends StatefulWidget {
   const VaultApp({super.key});
@@ -94,6 +95,8 @@ class _VaultAppState extends State<VaultApp> {
             themeMode: settings.themeMode,
             scaffoldMessengerKey: _messenger,
             routerConfig: _router,
+            builder: (context, child) =>
+                SplashOverlay(child: child ?? const SizedBox.shrink()),
           ),
         ),
       ),
