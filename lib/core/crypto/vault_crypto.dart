@@ -67,6 +67,10 @@ abstract final class VaultCrypto {
   static const keyLength = 32;
   static const nonceLength = 12;
   static const macLength = 16;
+  static const _zeroSalt = <int>[
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ];
 
   static final _aead = AesGcm.with256bits();
   static final _random = Random.secure();
@@ -147,15 +151,21 @@ abstract final class VaultCrypto {
 
   /// Derives an independent key for one purpose from a high-entropy key.
   /// High-entropy inputs need no slow KDF; HKDF only separates contexts.
+  ///
+  /// RFC 5869: a missing salt means HashLen zero bytes. We pass those
+  /// explicitly because Android's native HMAC (javax.crypto SecretKeySpec)
+  /// rejects an empty key. HMAC zero-pads keys, so the output is identical
+  /// to the empty-salt form — existing vaults derive the same keys.
   static Future<SecretKeyData> subkey(
     SecretKey inputKey,
     String info, {
     List<int> salt = const [],
   }) {
-    return Hkdf(
-      hmac: Hmac.sha256(),
-      outputLength: keyLength,
-    ).deriveKey(secretKey: inputKey, nonce: salt, info: label(info));
+    return Hkdf(hmac: Hmac.sha256(), outputLength: keyLength).deriveKey(
+      secretKey: inputKey,
+      nonce: salt.isEmpty ? _zeroSalt : salt,
+      info: label(info),
+    );
   }
 
   /// Raw AES-GCM with a caller-built nonce; used by [VaultStreamCipher].

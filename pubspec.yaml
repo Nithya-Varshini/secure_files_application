@@ -10,6 +10,9 @@ dependencies:
   animations: 2.2.0
   bip39_mnemonic: ^4.1.0
   camera: ^0.12.2
+  # Use the Camera2 implementation instead of the default CameraX one:
+  # CameraX never returned the still photo on a MediaTek Vivo (Android 14).
+  camera_android: ^0.10.12
   cryptography: ^2.9.0
   cryptography_flutter: ^2.3.4
   equatable: ^3.0.0
