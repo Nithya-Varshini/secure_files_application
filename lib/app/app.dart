@@ -87,7 +87,7 @@ class _VaultAppState extends State<VaultApp> {
         child: BlocBuilder<SettingsCubit, SettingsState>(
           buildWhen: (a, b) => a.themeMode != b.themeMode,
           builder: (context, settings) => MaterialApp.router(
-            title: 'Vault',
+            title: 'Kwam',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),
