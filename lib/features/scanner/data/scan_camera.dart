@@ -65,7 +65,12 @@ class DeviceScanCamera implements ScanCamera {
   Future<Uint8List> capture() async {
     final controller = _controller;
     if (controller == null) throw const CameraUnavailableException('Stopped');
-    final shot = await controller.takePicture();
+    // Some camera stacks never deliver the still (seen with CameraX on a
+    // MediaTek Vivo). Fail instead of freezing the shutter; the page then
+    // shows "That photo didn't work. Try again."
+    final shot = await controller.takePicture().timeout(
+      const Duration(seconds: 10),
+    );
     final bytes = await shot.readAsBytes();
     // The plugin writes the photo to the cache; remove the plaintext copy
     // immediately (threat model L7).
