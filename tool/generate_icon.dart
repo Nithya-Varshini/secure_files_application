@@ -7,7 +7,7 @@
 // Android crops every launcher icon with its own mask (circle, squircle,
 // rounded square) and shows only the central 72 of the 108 x 108 dp canvas.
 // So the source's own rounded tile and rim are dropped: the artwork inside it
-// (arches, glow, floor light) is cropped, scaled so the arches stay inside
+// (arches and glow; the floor light is painted out) is cropped, scaled so the arches stay inside
 // the 66 dp safe circle, and set on a blurred extension of its own background.
 import 'dart:io';
 import 'dart:math' as math;
@@ -18,7 +18,13 @@ const _source = 'assets/branding/kwam_icon_source.png';
 const _res = 'android/app/src/main/res';
 
 // Square crop of the source around the arches (source pixels).
-const _cropX = 157, _cropY = 80, _cropSize = 700;
+const _cropX = 156, _cropY = 71, _cropSize = 700;
+
+// Where the arch legs stand (source y), and the legs' x ranges. Everything
+// below the floor line (the floor light and reflections) is painted out.
+const _floorY = 688;
+const _legs = [(223, 317), (356, 428), (586, 660), (696, 788)];
+const _floorColor = (7, 5, 20);
 
 // Master canvas: 108 dp at 10 px/dp. The crop fills the central 56 dp.
 const _master = 1080;
@@ -26,7 +32,7 @@ const _artSize = 560;
 const _feather = 70; // px of soft blend between art and extended background
 
 void main() {
-  final source = img.decodePng(File(_source).readAsBytesSync())!;
+  final source = _removeFloor(img.decodePng(File(_source).readAsBytesSync())!);
   final art = img.copyCrop(
     source,
     x: _cropX,
@@ -78,6 +84,31 @@ void main() {
 
   _writeXml();
   stdout.writeln('Icons generated.');
+}
+
+/// Fades the background into a flat dark colour from just above the floor
+/// line down, keeping the arch legs. Below the line nothing is kept.
+img.Image _removeFloor(img.Image source) {
+  const fadeFrom = _floorY - 50;
+  final (fr, fg, fb) = _floorColor;
+  for (var y = fadeFrom; y < source.height; y++) {
+    final t = ((y - fadeFrom) / (_floorY - fadeFrom)).clamp(0.0, 1.0);
+    final fade = t * t * (3 - 2 * t);
+    for (var x = 0; x < source.width; x++) {
+      final onLeg = y < _floorY && _legs.any((l) => x >= l.$1 && x <= l.$2);
+      if (onLeg) continue;
+      final p = source.getPixel(x, y);
+      final a = y >= _floorY ? 1.0 : fade;
+      source.setPixelRgb(
+        x,
+        y,
+        (p.r + (fr - p.r) * a).round(),
+        (p.g + (fg - p.g) * a).round(),
+        (p.b + (fb - p.b) * a).round(),
+      );
+    }
+  }
+  return source;
 }
 
 /// Sharp artwork centred on the canvas. Outside it, the artwork's own blurred
@@ -174,9 +205,9 @@ void _writeXml() {
     '    android:width="108dp" android:height="108dp"\n'
     '    android:viewportWidth="108" android:viewportHeight="108">\n'
     '    <path android:fillColor="#FFFFFFFF"\n'
-    '        android:pathData="${_arch(54, 54.7, 18.8, 7.6, 74.6)}" />\n'
+    '        android:pathData="${_arch(54, 55.24, 18.85, 7.5, 75.36)}" />\n'
     '    <path android:fillColor="#FFFFFFFF"\n'
-    '        android:pathData="${_arch(54, 58.2, 9.3, 5.8, 74.6)}" />\n'
+    '        android:pathData="${_arch(54, 58.9, 9.28, 5.76, 75.36)}" />\n'
     '</vector>\n',
   );
   File('$_res/mipmap-anydpi-v26/ic_launcher.xml')
