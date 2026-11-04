@@ -1,4 +1,4 @@
-package com.example.secure_files_application
+package com.nithya.privacyvault
 
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec

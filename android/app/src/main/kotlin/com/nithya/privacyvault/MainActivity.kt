@@ -1,4 +1,4 @@
-package com.example.secure_files_application
+package com.nithya.privacyvault
 
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
