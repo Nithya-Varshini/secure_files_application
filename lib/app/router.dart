@@ -65,7 +65,13 @@ GoRouter createRouter(SessionCubit session) {
       ),
       GoRoute(
         path: Routes.lock,
-        pageBuilder: (context, state) => _fadeThrough(state, const LockPage()),
+        // No transition, for two reasons:
+        // * Security: vault content must vanish at once, not fade out.
+        // * Correctness: during a fade the old tab shell stays mounted; a
+        //   quick unlock (fingerprint) would build a second shell with the
+        //   same GlobalKey before the first is gone ("Duplicate GlobalKey").
+        pageBuilder: (context, state) =>
+            NoTransitionPage(key: state.pageKey, child: const LockPage()),
       ),
       GoRoute(
         path: Routes.recover,
@@ -162,7 +168,13 @@ StatefulShellBranch _tab(String path, Widget page) => StatefulShellBranch(
   routes: [
     GoRoute(
       path: path,
-      pageBuilder: (context, state) => NoTransitionPage(child: page),
+      // A messenger per tab: a message is shown by that tab's own Scaffold,
+      // which lifts its floating button above it. On the outer shell
+      // Scaffold it would cover "New note" / "Import" / "Add" for seconds.
+      // One shared messenger would draw it in all four (kept-alive) tabs,
+      // which also breaks Hero (duplicate SnackBar hero tags).
+      pageBuilder: (context, state) =>
+          NoTransitionPage(child: ScaffoldMessenger(child: page)),
     ),
   ],
 );

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -26,10 +27,20 @@ void main() {
   final captureButton = find.byWidgetPredicate(
     (w) => w is Semantics && w.properties.label == 'Capture page',
   );
+  // Tap a real tile: the centre of the grid is empty space on tall screens.
+  final firstTile = find
+      .descendant(
+        of: find.byType(GridView).hitTestable(),
+        matching: find.byWidgetPredicate((w) => w is OpenContainer),
+      )
+      .first;
   const shotDir = String.fromEnvironment('SHOT_DIR');
   var shotIndex = 0;
 
   Future<void> shot(WidgetTester tester, String name) async {
+    // Progress marker, so a hang on a device shows the last step reached.
+    // ignore: avoid_print
+    print('E2E step: $name');
     if (shotDir.isEmpty) return;
     await tester.pump(const Duration(milliseconds: 50));
     final view = tester.binding.renderViews.first;
@@ -49,8 +60,13 @@ void main() {
 
   /// Waits for animations that end. Screens with endless animations
   /// (skeletons, the scanner line) use [settleFor] instead.
-  Future<void> settle(WidgetTester tester) =>
-      tester.pumpAndSettle(const Duration(milliseconds: 50));
+  /// Fails after 20 s instead of the default 10 min, so an endless
+  /// animation on a device shows up quickly.
+  Future<void> settle(WidgetTester tester) => tester.pumpAndSettle(
+    const Duration(milliseconds: 50),
+    EnginePhase.sendSemanticsUpdate,
+    const Duration(seconds: 20),
+  );
 
   Future<void> settleFor(WidgetTester tester, int ms) async {
     for (var t = 0; t < ms; t += 50) {
@@ -67,7 +83,7 @@ void main() {
         matching: find.text(label),
       ),
     );
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    await settle(tester);
   }
 
   Future<void> enterPin(WidgetTester tester, String pin) async {
@@ -187,7 +203,7 @@ void main() {
     await tester.tap(find.text('Got it'));
     await settle(tester);
     await shot(tester, 'gallery');
-    await tester.tap(find.byType(GridView).hitTestable().first);
+    await tester.tap(firstTile);
     await settleFor(tester, 800);
     await settle(tester);
     await shot(tester, 'viewer');
@@ -195,7 +211,7 @@ void main() {
     await settle(tester);
     await tester.pageBack();
     await settle(tester);
-    await tester.longPress(find.byType(GridView).hitTestable().first);
+    await tester.longPress(firstTile);
     await settle(tester);
     await shot(tester, 'gallery_selecting');
     await tester.tap(find.byTooltip('Cancel selection'));
@@ -206,7 +222,8 @@ void main() {
     await settle(tester);
     await tester.tap(find.text('Add'));
     await settle(tester);
-    await tester.tap(find.text('Documents'));
+    // Home (kept mounted) has a "Documents" shortcut too; the sheet is on top.
+    await tester.tap(find.text('Documents').hitTestable().last);
     await settleFor(tester, 1200);
     await settle(tester);
     await shot(tester, 'files');
@@ -285,6 +302,8 @@ void main() {
     await settle(tester);
     // The lock screen offers the fingerprint at once; it succeeds.
     expect(find.text('Your vault'), findsOneWidget);
+    // An instant unlock must not race the lock transition (duplicate shell).
+    expect(tester.takeException(), isNull);
     await shot(tester, 'fingerprint_unlocked');
 
     // --- Lock, cancelled fingerprint, wrong PIN, right PIN -------------

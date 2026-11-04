@@ -9,7 +9,21 @@ class HomeShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Android Back on Gallery / Files / Notes returns to Home; only Back on
+    // Home closes the app. Without this, a tab's root page has nothing to
+    // pop, so go_router hands Back to the system and the app closes at once.
+    return PopScope(
+      canPop: shell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) shell.goBranch(0);
+      },
+      child: _scaffold(),
+    );
+  }
+
+  Widget _scaffold() {
     return Scaffold(
+      // Each tab has its own ScaffoldMessenger (see `_tab` in router.dart).
       body: shell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
